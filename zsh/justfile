@@ -1,0 +1,43 @@
+set unstable
+
+dir := if os() == "macos" {"mac"} else {"linux"}
+pwd := absolute_path(".")
+
+# Display this help
+default:
+  @just --list --unsorted
+
+# Configure zsh
+setup: create-symlinks
+
+# Install oh-my-zsh and plugins
+install: install-plugins
+
+# Create symlinks to the config files
+create-symlinks:
+    ln -sf {{pwd}}/{{dir}}/config "$HOME/.zshrc"
+
+# Install plugins
+[script("zsh")]
+install-plugins:
+  ZSH="${ZSH:-$HOME/.oh-my-zsh}"
+  if [ ! -d "${ZSH}" ]; then
+    sh -c "$(wget https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+  else
+    echo "Oh-My-Zsh is already installed"
+  fi
+  if [ ! -d "${ZSH}/plugins/zsh-autosuggestions" ]; then
+    git clone https://github.com/zsh-users/zsh-autosuggestions.git ${ZSH}/plugins/zsh-autosuggestions
+  else
+    echo "zsh-autosuggestions is already installed"
+  fi
+  if [ ! -d "${ZSH}/plugins/zsh-syntax-highlighting" ]; then
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH}/plugins/zsh-syntax-highlighting
+  else
+    echo "zsh-syntax-highlighting is already installed"
+  fi
+  if [ ! -d "${ZSH}/plugins/zsh-vi-mode" ]; then
+    git clone https://github.com/jeffreytse/zsh-vi-mode.git ${ZSH}/plugins/zsh-vi-mode
+  else
+    echo "zsh-vi-mode is already installed"
+  fi

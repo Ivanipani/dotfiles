@@ -1,0 +1,36 @@
+export ZSH="$HOME/.oh-my-zsh"
+
+ZSH_THEME="gnzh"
+
+zstyle ':omz:update' mode reminder
+
+HIST_STAMPS="mm/dd/yyyy"
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting zsh-vi-mode)
+
+source $ZSH/oh-my-zsh.sh
+
+setopt noautomenu
+setopt nomenucomplete
+
+# Variables
+export PATH="$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
+export XDG_CONFIG_HOME="$HOME/.config"
+export EDITOR="nvim"
+export TERM="xterm-256color"
+
+alias l="ls -lh"
+alias la="ls -lha"
+alias lt="ls -ltr"
+alias lat="ls -latr"
+
+alias v="nvim"
+alias vim="nvim"
+alias vimdiff="nvim -d"
+
+. "$HOME/.cargo/env"
+eval "$(direnv hook zsh)"
+eval "$(just --completions zsh)"
+# eval "$(wezterm shell-completion --shell zsh)"
+# eval "$(atuin init zsh)"
+# eval "$(zellij setup --generate-completion zsh)"
+# eval "$(starship init zsh)"
