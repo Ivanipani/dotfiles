@@ -12,6 +12,52 @@ source $ZSH/oh-my-zsh.sh
 setopt noautomenu
 setopt nomenucomplete
 
+# Functions
+alias docker-stop-all='docker stop $(docker ps -aq) && docker rm $(docker ps -aq)'
+
+function ns {
+  emulate -L zsh -o pipefail
+  setopt localoptions localtraps no_aliases
+
+  # If the user hits Ctrl-C while the widget is running, restore the prompt.
+  TRAPINT() { zle -I; zle reset-prompt; return 130 }
+
+  zle -I  # flush ZLE state before launching an external program
+
+  # Run on the real terminal, not via ZLE’s stdio
+  just --justfile ~/github/ivanipani/dotfiles/zellij/justfile sessionizer \
+       </dev/tty >/dev/tty 2>&1
+  local ret=$?
+
+  zle reset-prompt   # redraw prompt after we return
+  return $ret
+}
+
+zle -N ns
+
+bindkey '^f' ns
+
+function f {
+  # Prompt for directory using fd + fzf
+  local selection
+  selection=$(fd --type directory --base-directory "$HOME" \
+                 | fzf --height=50% --padding=1% --border=double \
+                       --header="CTRL-C or ESC to quit") || return
+
+  # If user aborted fzf (Exit status != 0), bail out cleanly
+  # (The '|| return' handles it.)
+
+  # Compose the full path
+  local target="$HOME/$selection"
+
+  # Check if the directory still exists
+  if [[ -d $target ]]; then
+    cd -- "$target" || echo "Failed to cd into '$target'"
+  else
+    echo "Directory '$target' does not exist."
+  fi
+}
+
 # Variables
 export PATH="$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 export XDG_CONFIG_HOME="$HOME/.config"
