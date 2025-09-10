@@ -34,3 +34,10 @@ install-language-servers:
     rustup component add rust-analyzer
     uv tool install --with rope --with pylsp-rope --with python-lsp-ruff --with pylsp-mypy python-lsp-server
     brew install lua-language-server
+
+# Install formatters
+[macos]
+install-formatters:
+    uv tool install ruff
+    cargo install stylua
+

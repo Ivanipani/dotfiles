@@ -10,6 +10,7 @@ setup:
   just wez/setup
   just zellij/setup
   just nvim/setup
+  just vcs/setup
 
 
 # Install all tools
@@ -18,3 +19,4 @@ install:
   just wez/install
   just zellij/install
   just nvim/install
+  just vcs/install

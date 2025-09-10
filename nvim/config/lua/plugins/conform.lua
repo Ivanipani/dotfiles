@@ -86,7 +86,7 @@ return { -- Autoformat
                 vim.defer_fn(function()
                     format_diffs()
                 end, 10)
-                return false                 -- Disable the default format_on_save behavior
+                return false -- Disable the default format_on_save behavior
             end
         end,
         formatters = {
