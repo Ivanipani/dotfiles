@@ -23,6 +23,8 @@ require("lazy").setup({
 	require("plugins.hunk"),
 	require("plugins.lazy-dev"),
 	require("plugins.lsp"),
+	require("plugins.lualine"),
+	require("plugins.local-highlight"),
 	require("plugins.dashboard"),
 	require("plugins.neo-tree"),
 	require("plugins.neoclip"),

@@ -221,7 +221,7 @@ return {
             capabilities = capabilities,
             settings = {
                 pylsp = {
-                    cmd = { 'uv', 'run', '--with', 'python-lsp-server,pylsp-mypy,pylsp-rope,python-lsp-ruff' },
+                    cmd = { 'uv', 'run', '--with', 'python-lsp-server,,pylsp-rope,python-lsp-ruff' },
                     plugins = {
                         -- Disable built-in linters/formatters in favor of ruff
                         pycodestyle = {
