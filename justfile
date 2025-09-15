@@ -11,6 +11,7 @@ setup:
   just zellij/setup
   just nvim/setup
   just vcs/setup
+  just nushell/setup
 
 
 # Install all tools
@@ -21,3 +22,4 @@ install:
   just nvim/install
   just vcs/install
   just tools/install
+
