@@ -20,3 +20,4 @@ install:
   just zellij/install
   just nvim/install
   just vcs/install
+  just tools/install
