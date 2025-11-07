@@ -257,5 +257,11 @@ return {
             }
         }
         vim.lsp.enable("pylsp")
+
+        vim.lsp.config["vtsls"] = {
+            capabilities = capabilities,
+            settings = { }
+        }
+        vim.lsp.enable("vtsls")
     end
 }
