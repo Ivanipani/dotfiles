@@ -10,6 +10,17 @@ layout {
             plugin location="zellij:status-bar"
         }
     }
+    tab name="claude" hide_floating_panes=true {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane command="claude" borderless=true {
+            args "."
+        }
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
     tab name="jj" hide_floating_panes=true {
         pane size=1 borderless=true {
             plugin location="zellij:tab-bar"
