@@ -16,6 +16,7 @@ install: install-plugins
 # Create symlinks to the config files
 create-symlinks:
     ln -sf {{pwd}}/{{dir}}/config "$HOME/.zshrc"
+    ln -sf {{pwd}}/starship.toml "$HOME/.config/starship.toml"
 
 # Install plugins
 [script("zsh")]

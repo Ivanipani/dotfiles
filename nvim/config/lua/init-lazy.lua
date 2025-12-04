@@ -15,26 +15,36 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
-require("lazy").setup({
-	require("plugins.blink"),
-	require("plugins.colorscheme"),
-	require("plugins.conform"),
-	require("plugins.gitsigns"),
-	require("plugins.hunk"),
-	require("plugins.lazy-dev"),
-	require("plugins.lsp"),
-	require("plugins.lualine"),
-	require("plugins.local-highlight"),
-	require("plugins.dashboard"),
-	require("plugins.neo-tree"),
-	require("plugins.neoclip"),
-	require("plugins.telescope"),
-	require("plugins.todo"),
-	require("plugins.treesitter"),
-	require("plugins.snacks"),
-	require("plugins.which-key"),
-	require("plugins.venv"),
-	require("plugins.flash"),
-	require("plugins.indent"),
-	require("plugins.zellij-nav"),
-})
+if vim.g.vscode then 
+    require("lazy").setup({
+        require("plugins.gitsigns"),
+        require("plugins.local-highlight"),
+        require("plugins.todo"),
+        require("plugins.flash"),
+        require("plugins.indent"),
+    })
+else
+    require("lazy").setup({
+        require("plugins.blink"),
+        require("plugins.colorscheme"),
+        require("plugins.conform"),
+        require("plugins.gitsigns"),
+        require("plugins.hunk"),
+        require("plugins.lazy-dev"),
+        require("plugins.lsp"),
+        require("plugins.lualine"),
+        require("plugins.local-highlight"),
+        require("plugins.dashboard"),
+        require("plugins.neo-tree"),
+        require("plugins.neoclip"),
+        require("plugins.telescope"),
+        require("plugins.todo"),
+        require("plugins.treesitter"),
+        require("plugins.snacks"),
+        require("plugins.which-key"),
+        require("plugins.venv"),
+        require("plugins.flash"),
+        require("plugins.indent"),
+        require("plugins.zellij-nav"),
+    })
+end
