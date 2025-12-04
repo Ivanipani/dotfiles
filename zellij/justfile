@@ -8,10 +8,15 @@ invocation_dir := invocation_directory()
 default:
   @just --list --unsorted
 
-# Start or switch zellij sessions
+# Start or switch zellij sessions (nushell version)
 [no-cd]
 sessionizer:
   nu {{pwd}}/scripts/sessionizer.nu
+
+# Start or switch zellij sessions (zsh version)
+[no-cd]
+sessionizer-zsh:
+  zsh {{pwd}}/scripts/sessionizer.zsh
 
 # Configure zellij
 setup: create-symlinks

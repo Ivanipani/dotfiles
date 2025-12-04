@@ -25,7 +25,7 @@ layout {
         pane size=1 borderless=true {
             plugin location="zellij:tab-bar"
         }
-        pane command="lazyjj" size="60%"
+        pane command="jjui" size="60%"
         pane size="40%"
         pane size=1 borderless=true {
             plugin location="zellij:status-bar"

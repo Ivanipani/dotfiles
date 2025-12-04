@@ -37,6 +37,26 @@ zle -N ns
 
 bindkey '^f' ns
 
+function cs {
+  emulate -L zsh -o pipefail
+  setopt localoptions localtraps no_aliases
+
+  # If the user hits Ctrl-C while the widget is running, restore the prompt.
+  TRAPINT() { zle -I; zle reset-prompt; return 130 }
+
+  zle -I  # flush ZLE state before launching an external program
+
+  # Run on the real terminal, not via ZLE's stdio
+  just --justfile ~/github/ivanipani/dotfiles/zellij/justfile sessionizer-zsh \
+       </dev/tty >/dev/tty 2>&1
+  local ret=$?
+
+  zle reset-prompt   # redraw prompt after we return
+  return $ret
+}
+
+zle -N cs
+
 function f {
   # Prompt for directory using fd + fzf
   local selection
@@ -81,10 +101,12 @@ eval "$(wezterm shell-completion --shell zsh)"
 eval "$(atuin init zsh)"
 eval "$(zellij setup --generate-completion zsh)"
 eval "$(starship init zsh)"
-
 # bun completions
 [ -s "/Users/ivanperdomo/.bun/_bun" ] && source "/Users/ivanperdomo/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+# go
+export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
