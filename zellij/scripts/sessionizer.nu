@@ -1,8 +1,7 @@
 use std log
 
-# Zellij Session Manager - A testable and self-explanatory script for managing Zellij sessions
-# Author: Your Name
-# Purpose: Switch to existing sessions or create new ones with layout selection
+# Zellij Session Manager
+# Switch to existing sessions or create new ones with layout selection
 
 # Configuration - easy to modify for different environments
 const PROJECT_ROOT = "~/github"

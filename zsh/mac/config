@@ -59,7 +59,7 @@ function f {
 }
 
 # Variables
-export PATH="$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
+export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"
 export XDG_CONFIG_HOME="$HOME/.config"
 export EDITOR="nvim"
@@ -81,3 +81,10 @@ eval "$(wezterm shell-completion --shell zsh)"
 eval "$(atuin init zsh)"
 eval "$(zellij setup --generate-completion zsh)"
 eval "$(starship init zsh)"
+
+# bun completions
+[ -s "/Users/ivanperdomo/.bun/_bun" ] && source "/Users/ivanperdomo/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"

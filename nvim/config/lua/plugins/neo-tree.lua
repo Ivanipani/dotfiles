@@ -1,88 +1,93 @@
 return {
-    {
-        "nvim-neo-tree/neo-tree.nvim",
-        branch = "v3.x",
-        dependencies = {
-            "nvim-lua/plenary.nvim",
-            "MunifTanjim/nui.nvim",
-            "nvim-tree/nvim-web-devicons", -- optional, but recommended
-            "Cretezy/neo-tree-jj.nvim",
-        },
-        lazy = false, -- neo-tree will lazily load itself
-        keys = {
-            {
-                '<leader>bf',
-                '<cmd>Neotree filesystem toggle<cr>',
-                desc = 'View filesystem',
-            },
-            {
-                '<leader>bb',
-                '<cmd>Neotree buffers toggle<cr>',
-                desc = 'View buffers (toggle)',
-            },
-            {
-                '<leader>bg',
-                '<cmd>Neotree git_status toggle<cr>',
-                desc = 'View git status (toggle)',
-            },
-            {
-                '<leader>bs',
-                '<cmd>Neotree document_symbols toggle<cr>',
-                desc = 'View symbols (toggle)',
-            },
-            {
-                '<leader>br',
-                '<cmd>Neotree reveal<cr>',
-                desc = 'Reveal active file',
-            },
-            {
-                '<leader>bj',
-                '<cmd>Neotree jj<cr>',
-                desc = 'View jj status',
-            },
-        },
-        config = function()
-            require("neo-tree").setup({
-                -- your neo-tree config here
-                sources = {
-                    "filesystem",
-                    "buffers",
-                    "git_status",
-                    "document_symbols",
-                    "jj"
-                },
-                window = {
-                    mappings = {
-                        ["<space>"] = "none", -- disable space key for selection
-                    },
-                    position = "left"
-                },
-                filesystem = {
-                    filtered_items = {
-                        visible = true,
-                        hide_dotfiles = false,
-                        hide_gitignored = true
-                    }
-                },
-                document_symbols = {
-                    window = {
-                        position = "float"
-                    }
-                },
-                source_selector = {
-                    winbar = true,
-                    statusline = false,
-                    sources = {
-                        { source = "filesystem" },
-                        { source = "buffers" },
-                        { source = "git_status" },
-                        { source = "document_symbols" },
-                    },
-                },
-
-            })
-        end
-    }
+	{
+		"nvim-neo-tree/neo-tree.nvim",
+		branch = "v3.x",
+		dependencies = {
+			"nvim-lua/plenary.nvim",
+			"MunifTanjim/nui.nvim",
+			"nvim-tree/nvim-web-devicons", -- optional, but recommended
+			"Cretezy/neo-tree-jj.nvim",
+		},
+		lazy = false, -- neo-tree will lazily load itself
+		keys = {
+			{
+				"<leader>bf",
+				"<cmd>Neotree filesystem toggle<cr>",
+				desc = "View filesystem",
+			},
+			{
+				"<leader>bb",
+				"<cmd>Neotree buffers toggle<cr>",
+				desc = "View buffers (toggle)",
+			},
+			{
+				"<leader>bg",
+				"<cmd>Neotree git_status toggle<cr>",
+				desc = "View git status (toggle)",
+			},
+			{
+				"<leader>bs",
+				"<cmd>Neotree document_symbols toggle<cr>",
+				desc = "View symbols (toggle)",
+			},
+			{
+				"<leader>br",
+				"<cmd>Neotree reveal<cr>",
+				desc = "Reveal active file",
+			},
+			{
+				"<leader>bj",
+				"<cmd>Neotree jj<cr>",
+				desc = "View jj status",
+			},
+		},
+		config = function()
+			require("neo-tree").setup({
+				-- your neo-tree config here
+				sources = {
+					"filesystem",
+					"buffers",
+					"git_status",
+					"document_symbols",
+					"jj",
+				},
+				window = {
+					mappings = {
+						["<space>"] = "none", -- disable space key for selection
+					},
+					position = "left",
+				},
+				filesystem = {
+					filtered_items = {
+						visible = true,
+						hide_dotfiles = false,
+						hide_gitignored = true,
+					},
+					follow_current_file = {
+						enabled = true, -- This will find and focus the file in the active buffer every time
+						--               -- the current file is changed while the tree is open.
+						leave_dirs_open = false, -- `false` closes auto expanded dirs, such as with `:Neotree reveal`
+					},
+                    group_empty_dirs = true
+				},
+				document_symbols = {
+					window = {
+						position = "float",
+					},
+				},
+				source_selector = {
+					winbar = true,
+					statusline = false,
+					sources = {
+						{ source = "filesystem" },
+						{ source = "buffers" },
+						{ source = "git_status" },
+						{ source = "document_symbols" },
+					},
+				},
+			})
+		end,
+	},
 }
 
 -- ---@type neotree.Config.Base
