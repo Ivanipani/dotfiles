@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(chmod:*)",
+      "Bash(jj diff:*)",
+      "Bash(jj describe:*)",
+      "Bash(zellij ls:*)",
+      "Bash(fd:*)",
+      "Bash(cat:*)",
+      "Bash(printf:*)",
+      "Bash(source:*)"
+    ]
+  }
+}

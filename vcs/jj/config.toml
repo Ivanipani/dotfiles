@@ -8,4 +8,7 @@ diff-formatter = ["difft", "--color=always", "$left", "$right"]
 
 [git]
 private-commits = "description(glob:'wip:*') | description(glob:'private:*') | bookmarks(private)"
-push-new-bookmarks = true
+# push-new-bookmarks = true
+
+[remotes.origin]
+auto-track-bookmarks = "*"
