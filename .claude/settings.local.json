@@ -9,7 +9,9 @@
       "Bash(fd:*)",
       "Bash(cat:*)",
       "Bash(printf:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

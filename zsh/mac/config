@@ -47,8 +47,7 @@ function cs {
   zle -I  # flush ZLE state before launching an external program
 
   # Run on the real terminal, not via ZLE's stdio
-  just --justfile ~/github/ivanipani/dotfiles/zellij/justfile sessionizer-zsh \
-       </dev/tty >/dev/tty 2>&1
+  ~/github/ivanipani/dotfiles/zellij/scripts/sessionizer-david.zsh
   local ret=$?
 
   zle reset-prompt   # redraw prompt after we return
@@ -80,7 +79,7 @@ function f {
 
 # Variables
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
-export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"
+export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
 export XDG_CONFIG_HOME="$HOME/.config"
 export EDITOR="nvim"
 export TERM="xterm-256color"
@@ -109,4 +108,5 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # go
+export GOPATH="$HOME/go"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"

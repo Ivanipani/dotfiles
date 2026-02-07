@@ -33,6 +33,7 @@ else
         require("plugins.lazy-dev"),
         require("plugins.lsp"),
         require("plugins.lualine"),
+        require("plugins.go"),
         require("plugins.local-highlight"),
         require("plugins.dashboard"),
         require("plugins.neo-tree"),
