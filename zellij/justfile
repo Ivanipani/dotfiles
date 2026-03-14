@@ -27,7 +27,7 @@ install: install-plugins
 
 # Install plugins
 [script("zsh")]
-install-plugins: create-symlinks
+install-plugins:
   if [ ! -f ./plugins/vim-zellij-navigator.wasm ]; then
     wget -P ./plugins https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm
   else
