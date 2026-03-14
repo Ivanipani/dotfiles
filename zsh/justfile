@@ -17,6 +17,8 @@ install: install-plugins
 create-symlinks:
     ln -sf {{pwd}}/{{dir}}/config "$HOME/.zshrc"
     ln -sf {{pwd}}/starship.toml "$HOME/.config/starship.toml"
+    mkdir -p "$HOME/scripts"
+    ln -sf {{pwd}}/scripts/try "$HOME/scripts"
 
 # Install plugins
 [script("zsh")]
