@@ -87,7 +87,7 @@ function f {
 }
 
 # Variables
-export PATH="$HOME/.local/bin:$HOME/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin"
+export PATH="$HOME/.local/bin:$HOME/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin:$HOME/.cargo/bin"
 export XDG_CONFIG_HOME="$HOME/.config"
 export EDITOR="nvim"
 export TERM="xterm-256color"
@@ -112,3 +112,6 @@ eval "$(starship init zsh)"
 # go
 export GOPATH="$HOME/go"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+
+# rust
+source $HOME/.cargo/env
