@@ -101,6 +101,9 @@ alias v="nvim"
 alias vim="nvim"
 alias vimdiff="nvim -d"
 
+alias ec="$EDITOR $HOME/.zshrc" # edit .zshrc
+alias sc="source $HOME/.zshrc"  # reload zsh configuration
+
 . "$HOME/.cargo/env"
 eval "$(direnv hook zsh)"
 eval "$(just --completions zsh)"

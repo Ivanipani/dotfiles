@@ -1,4 +1,7 @@
-source ~/.zplug/init.zsh
+# source ~/.zplug/init.zsh
+#export ZPLUG_HOME=$HOME/.zplug
+export ZPLUG_HOME=/usr/share/zplug
+source $ZPLUG_HOME/init.zsh
 
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
 zplug "themes/gnzh", from:oh-my-zsh, as:theme
@@ -97,6 +100,9 @@ alias lat="ls -latr"
 alias v="nvim"
 alias vim="nvim"
 alias vimdiff="nvim -d"
+
+alias ec="$EDITOR $HOME/.zshrc" # edit .zshrc
+alias sc="source $HOME/.zshrc"  # reload zsh configuration
 
 eval "$(direnv hook zsh)"
 eval "$(just --completions zsh)"
