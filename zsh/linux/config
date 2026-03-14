@@ -1,6 +1,4 @@
-# source ~/.zplug/init.zsh
-#export ZPLUG_HOME=$HOME/.zplug
-export ZPLUG_HOME=/usr/share/zplug
+export ZPLUG_HOME=$HOME/.zplug
 source $ZPLUG_HOME/init.zsh
 
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
@@ -15,6 +13,8 @@ if ! zplug check; then
 fi
 
 zplug load
+
+DOTFILES="${0:A:h:h:h}"
 
 HIST_STAMPS="mm/dd/yyyy"
 
@@ -34,7 +34,7 @@ function ns {
   zle -I  # flush ZLE state before launching an external program
 
   # Run on the real terminal, not via ZLE’s stdio
-  just --justfile ~/github/ivanipani/dotfiles/zellij/justfile sessionizer \
+  just --justfile $DOTFILES/zellij/justfile sessionizer \
        </dev/tty >/dev/tty 2>&1
   local ret=$?
 
@@ -56,7 +56,7 @@ function cs {
   zle -I  # flush ZLE state before launching an external program
 
   # Run on the real terminal, not via ZLE's stdio
-  ~/github/ivanipani/dotfiles/zellij/scripts/sessionizer-david.zsh
+  $DOTFILES/zellij/scripts/sessionizer-david.zsh
   local ret=$?
 
   zle reset-prompt   # redraw prompt after we return
