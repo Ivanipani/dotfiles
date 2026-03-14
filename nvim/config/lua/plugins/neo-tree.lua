@@ -59,16 +59,20 @@ return {
 				},
 				filesystem = {
 					filtered_items = {
-						visible = true,
+						visible = false,
 						hide_dotfiles = false,
 						hide_gitignored = true,
+                        hide_by_pattern = {
+                            "node_modules",
+                            ".venv"
+                        }
 					},
 					follow_current_file = {
 						enabled = true, -- This will find and focus the file in the active buffer every time
 						--               -- the current file is changed while the tree is open.
 						leave_dirs_open = false, -- `false` closes auto expanded dirs, such as with `:Neotree reveal`
 					},
-                    group_empty_dirs = true
+                    group_empty_dirs = false
 				},
 				document_symbols = {
 					window = {
