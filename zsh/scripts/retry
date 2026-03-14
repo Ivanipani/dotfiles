@@ -3,7 +3,7 @@
 cmd="$*"
 start=$(date +%s)
 
-while ! eval "$cmd" > /dev/null 2>&1; do
+while ! eval "$cmd" ; do
   echo "$(date '+%Y-%m-%d %H:%M:%S') - Failed"
   sleep 5
 done

@@ -37,7 +37,7 @@ cmd_setup() {
   ln -sf "$SCRIPT_DIR/$platform/config" "$HOME/.zshrc"
   ln -sf "$SCRIPT_DIR/starship.toml" "$HOME/.config/starship.toml"
   mkdir -p "$HOME/scripts"
-  ln -sf "$SCRIPT_DIR/scripts/try" "$HOME/scripts/try"
+  ln -sf "$SCRIPT_DIR/scripts/retry" "$HOME/scripts/retry"
   echo "Done."
 }
 
