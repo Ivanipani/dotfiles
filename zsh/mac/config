@@ -3,10 +3,8 @@ source $ZPLUG_HOME/init.zsh
 
 zplug "robbyrussell/oh-my-zsh", use:"oh-my-zsh.sh"
 zplug "themes/gnzh", from:oh-my-zsh, as:theme
-zplug "plugins/git", from:oh-my-zsh
 zplug "zsh-users/zsh-autosuggestions"
 zplug "zsh-users/zsh-syntax-highlighting", defer:2
-zplug "jeffreytse/zsh-vi-mode"
 
 if ! zplug check; then
   zplug install
@@ -107,14 +105,13 @@ alias ec="$EDITOR $HOME/.zshrc" # edit .zshrc
 alias sc="source $HOME/.zshrc"  # reload zsh configuration
 
 . "$HOME/.cargo/env"
-eval "$(direnv hook zsh)"
-eval "$(just --completions zsh)"
-eval "$(wezterm shell-completion --shell zsh)"
-eval "$(atuin init zsh)"
-eval "$(zellij setup --generate-completion zsh)"
-eval "$(starship init zsh)"
+(( $+commands[direnv] )) && eval "$(direnv hook zsh)"
+(( $+commands[just] )) && eval "$(just --completions zsh)"
+(( $+commands[wezterm] )) && eval "$(wezterm shell-completion --shell zsh)"
+(( $+commands[atuin] )) && eval "$(atuin init zsh)"
+
 # bun completions
-[ -s "/Users/ivanperdomo/.bun/_bun" ] && source "/Users/ivanperdomo/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"

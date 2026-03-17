@@ -3,10 +3,8 @@ source $ZPLUG_HOME/init.zsh
 
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
 zplug "themes/gnzh", from:oh-my-zsh, as:theme
-zplug "plugins/git", from:oh-my-zsh
 zplug "zsh-users/zsh-autosuggestions"
 zplug "zsh-users/zsh-syntax-highlighting", defer:2
-zplug "jeffreytse/zsh-vi-mode"
 
 if ! zplug check; then
   zplug install
@@ -106,8 +104,6 @@ alias sc="source $HOME/.zshrc"  # reload zsh configuration
 
 eval "$(direnv hook zsh)"
 eval "$(just --completions zsh)"
-eval "$(zellij setup --generate-completion zsh)"
-eval "$(starship init zsh)"
 
 # go
 export GOPATH="$HOME/go"
