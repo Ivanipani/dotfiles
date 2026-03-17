@@ -1,11 +1,26 @@
 #!/bin/zsh
 
-cmd="$*"
-start=$(date +%s)
+period=5
 
-while ! eval "$cmd" ; do
-  echo "$(date '+%Y-%m-%d %H:%M:%S') - Failed"
-  sleep 5
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--period)
+      period="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
 done
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Success after $(( $(date +%s) - start ))s"
+cmd="$*"
+start=$(date +%s)
+count=1
+while ! eval "$cmd" ; do
+  (( count++ ))
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - Failed"
+  sleep "$period"
+done
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Success after $count tries and $(( $(date +%s) - start ))s"
