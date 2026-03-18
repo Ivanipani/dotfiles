@@ -42,3 +42,9 @@ if (( $+commands[go] )); then
 else
   echo "[zsh] go not found, skipping go paths" >&2
 fi
+
+if (( $+commands[zellij] )); then
+  export ZELLIJ_CONFIG_DIR="$HOME/.config/zellij"
+else
+  echo "[zellij] go not found, skipping completions" >&2
+fi

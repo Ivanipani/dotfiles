@@ -1,10 +1,9 @@
 export ZPLUG_HOME=/opt/homebrew/opt/zplug
-OMZSH_USE="oh-my-zsh.sh"
+export XDG_CONFIG_HOME="$HOME/.config"
+ZSH_CONFIG_HOME="$XDG_CONFIG_HOME/zsh"
 
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
-
-ZSH_CONFIG_HOME="$HOME/.config/zsh"
 
 source $ZSH_CONFIG_HOME/common/plugins.zsh
 source $ZSH_CONFIG_HOME/common/env.zsh
