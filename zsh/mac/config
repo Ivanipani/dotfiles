@@ -1,15 +1,14 @@
 export ZPLUG_HOME=/opt/homebrew/opt/zplug
 OMZSH_USE="oh-my-zsh.sh"
 
-DOTFILES="${0:A:h:h:h}"
-echo sourcing zsh config from: "$DOTFILES"
-source $DOTFILES/zsh/common/plugins.zsh
-
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
 
-source $DOTFILES/zsh/common/env.zsh
-source $DOTFILES/zsh/common/options.zsh
-source $DOTFILES/zsh/common/functions.zsh
-source $DOTFILES/zsh/common/aliases.zsh
-source $DOTFILES/zsh/common/integrations.zsh
+ZSH_CONFIG_HOME="$HOME/.config/zsh"
+
+source $ZSH_CONFIG_HOME/common/plugins.zsh
+source $ZSH_CONFIG_HOME/common/env.zsh
+source $ZSH_CONFIG_HOME/common/options.zsh
+source $ZSH_CONFIG_HOME/common/functions.zsh
+source $ZSH_CONFIG_HOME/common/aliases.zsh
+source $ZSH_CONFIG_HOME/common/integrations.zsh

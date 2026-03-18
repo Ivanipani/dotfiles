@@ -36,6 +36,8 @@ cmd_setup() {
   echo "Creating symlinks..."
   ln -sf "$SCRIPT_DIR/$platform/config" "$HOME/.zshrc"
   ln -sf "$SCRIPT_DIR/starship.toml" "$HOME/.config/starship.toml"
+  mkdir -p "$HOME/.config/zsh"
+  ln -sf "$SCRIPT_DIR/common" "$HOME/.config/zsh"
   mkdir -p "$HOME/scripts"
   ln -sf "$SCRIPT_DIR/scripts/retry" "$HOME/scripts/retry"
   echo "Done."
