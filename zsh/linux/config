@@ -1,3 +1,5 @@
+prompt off
+
 export ZPLUG_HOME=$HOME/.zplug
 export XDG_CONFIG_HOME="$HOME/.config"
 ZSH_CONFIG_HOME="$XDG_CONFIG_HOME/zsh"
