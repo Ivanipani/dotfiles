@@ -1,6 +1,7 @@
 export ZPLUG_HOME=/opt/homebrew/opt/zplug
 export XDG_CONFIG_HOME="$HOME/.config"
 ZSH_CONFIG_HOME="$XDG_CONFIG_HOME/zsh"
+_df="${ZSH_CONFIG_HOME}/common"; export DOTFILES="${_df:A:h:h}"; unset _df
 
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
 export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"

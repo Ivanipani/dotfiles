@@ -36,12 +36,14 @@ else
   echo "[zsh] cargo env not found, skipping rust setup" >&2
 fi
 
-if (( $+commands[go] )); then
-  export GOPATH="$HOME/go"
-  export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
-else
-  echo "[zsh] go not found, skipping go paths" >&2
-fi
+# if (( $+commands[go] )); then
+#   export GOPATH="$HOME/go"
+#   export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+# else
+#   echo "[zsh] go not found, skipping go paths" >&2
+# fi
+export GOPATH="$HOME/go"
+export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 
 if (( $+commands[zellij] )); then
   export ZELLIJ_CONFIG_DIR="$HOME/.config/zellij"
