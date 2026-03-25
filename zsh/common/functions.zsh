@@ -1,19 +1,4 @@
 if (( $+commands[just] && $+commands[zellij] )); then
-  function ns {
-    emulate -L zsh -o pipefail
-    setopt localoptions localtraps no_aliases
-
-    TRAPINT() { zle -I; zle reset-prompt; return 130 }
-
-    zle -I
-
-    just --justfile $DOTFILES/zellij/justfile sessionizer \
-         </dev/tty >/dev/tty 2>&1
-    local ret=$?
-
-    zle reset-prompt
-    return $ret
-  }
 
   zle -N ns
   bindkey '^f' ns

@@ -9,6 +9,7 @@ set -e
 # Configuration
 PROJECT_ROOTS=(
     "${HOME}/github"
+    "${HOME}"
 )
 # Single directories to include directly (not searched within)
 PROJECT_DIRS=(
