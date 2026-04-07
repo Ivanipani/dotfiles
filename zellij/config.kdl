@@ -126,14 +126,6 @@ keybinds clear-defaults=true {
         //     SwitchToMode "locked"
         // }
         bind "d" { Detach; }
-        bind "g" {
-            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/zellij-sessionizer.wasm" {
-                floating true
-                move_to_focused_tab true
-                root_dirs "~/bbgithub/iperdomo5/sandbox/resil/libraries;~/bbgithub/iperdomo5/sandbox/resil/services"
-                session_layout ":base-project"
-            }
-        }
         bind "o" { SwitchToMode "normal"; }
         bind "p" {
             LaunchOrFocusPlugin "plugin-manager" {
@@ -215,12 +207,6 @@ keybinds clear-defaults=true {
 // changing these requires a restart to take effect
 plugins {
     about location="zellij:about"
-    autolock location="file:~/.config/zellij/plugins/zellij-autolock.wasm" {
-        is_enabled true
-        print_to_log true
-        reaction_seconds "0.3"
-        triggers "nvim|vim|git|fzf|zoxide|atuin"
-    }
     compact-bar location="zellij:compact-bar"
     configuration location="zellij:configuration"
     filepicker location="zellij:strider" {
@@ -229,7 +215,6 @@ plugins {
     navigator location="file:~/.config/zellij/plugins/vim-zellij-navigator.wasm"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
-    sessionizer location="file:~/.config/zellij/plugins/zellij-sessionizer.wasm"
     status-bar location="zellij:status-bar"
     switcher location="file:~/.config/zellij/plugins/zellij-switch.wasm"
     strider location="zellij:strider"
@@ -243,7 +228,6 @@ plugins {
 // eg. "file:/path/to/my-plugin.wasm"
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
-    sessionizer
     navigator
     switcher
 }

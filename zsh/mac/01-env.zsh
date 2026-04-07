@@ -2,3 +2,6 @@ export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/scripts:/opt/homebrew/bin:/op
 export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
 export EDITOR="nvim"
 export TERM="xterm-256color"
+export GOPATH="$HOME/go"
+export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+

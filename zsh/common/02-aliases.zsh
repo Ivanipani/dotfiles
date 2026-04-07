@@ -6,9 +6,10 @@ alias lat="ls -latr --color=auto"
 alias v="nvim"
 alias vimdiff="nvim -d"
 
-alias ec="$EDITOR $HOME/.zshrc" # edit .zshrc
+alias ec="$EDITOR $DOTFILE_DIR" # edit .zshrc
 alias sc="source $HOME/.zshrc"  # reload zsh configuration
 
 alias docker-stop-all='docker stop $(docker ps -aq) && docker rm $(docker ps -aq)'
 
 alias k="kubectl"
+alias h="history"

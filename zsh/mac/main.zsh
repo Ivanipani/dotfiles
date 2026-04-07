@@ -1,6 +1,7 @@
 export ZPLUG_HOME=/opt/homebrew/opt/zplug
 export XDG_CONFIG_HOME="$HOME/.config"
 
+export DOTFILE_DIR=$(realpath $HOME/.zshrc/../../..)
 
 source $XDG_CONFIG_HOME/zsh/01-env.zsh
 source $XDG_CONFIG_HOME/zsh/02-aliases.zsh

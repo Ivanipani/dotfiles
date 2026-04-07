@@ -1,9 +1,4 @@
-if (( $+commands[just] && $+commands[zellij] )); then
-
-  zle -N ns
-  bindkey '^f' ns
-
-  function cs {
+function cs {
     emulate -L zsh -o pipefail
     setopt localoptions localtraps no_aliases
 
@@ -11,17 +6,13 @@ if (( $+commands[just] && $+commands[zellij] )); then
 
     zle -I
 
-    $DOTFILES/zellij/scripts/sessionizer-david.zsh
+    $DOTFILE_DIR/zellij/scripts/sessionizer-david.zsh
     local ret=$?
 
     zle reset-prompt
     return $ret
-  }
+}
 
-  zle -N cs
-else
-  echo "[zsh] just/zellij not found, skipping sessionizer (ns, cs)" >&2
-fi
 
 if (( $+commands[fd] && $+commands[fzf] )); then
   function f {

@@ -15,7 +15,7 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
-if vim.g.vscode then 
+if vim.g.vscode then
     require("lazy").setup({
         require("plugins.gitsigns"),
         require("plugins.local-highlight"),
