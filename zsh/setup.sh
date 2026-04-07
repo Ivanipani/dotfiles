@@ -40,6 +40,8 @@ cmd_setup() {
   ln -sf "$SCRIPT_DIR/common" "$HOME/.config/zsh"
   mkdir -p "$HOME/scripts"
   ln -sf "$SCRIPT_DIR/scripts/retry" "$HOME/scripts/retry"
+  mkdir -p "$HOME/.config/atuin"
+  ln -sf "$SCRIPT_DIR/atuin.toml" "$HOME/.config/atuin/config.toml"
   echo "Done."
 }
 
