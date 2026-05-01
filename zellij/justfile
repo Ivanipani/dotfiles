@@ -19,11 +19,13 @@ sessionizer-zsh:
   zsh {{pwd}}/scripts/sessionizer.zsh
 
 # Configure zellij
-setup:
-    zsh {{pwd}}/setup.sh
+setup: configure-symlinks
 
 install: install-plugins
     cargo install --locked zellij
+
+configure-symlinks:
+    # ln -sf {{pwd}}/scripts/sessionizer-david.zsh
 
 # Install plugins
 [script("zsh")]
