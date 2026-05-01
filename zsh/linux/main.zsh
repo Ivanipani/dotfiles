@@ -3,14 +3,14 @@ prompt off
 export ZPLUG_HOME=$HOME/.zplug
 export XDG_CONFIG_HOME="$HOME/.config"
 ZSH_CONFIG_HOME="$XDG_CONFIG_HOME/zsh"
-_df="${ZSH_CONFIG_HOME}/common"; export DOTFILES="${_df:A:h:h}"; unset _df
 
-export PATH="$HOME/.local/bin:$HOME/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/bin:$HOME/.cargo/bin"
-export EDITOR="nvim"
-export TERM="xterm-256color"
+export DOTFILE_DIR=$(realpath $HOME/.zshrc/../../..)
 
-source $ZSH_CONFIG_HOME/common/plugins.zsh
-source $ZSH_CONFIG_HOME/common/options.zsh
-source $ZSH_CONFIG_HOME/common/functions.zsh
-source $ZSH_CONFIG_HOME/common/aliases.zsh
-source $ZSH_CONFIG_HOME/common/integrations.zsh
+source $XDG_CONFIG_HOME/zsh/01-env.zsh
+source $XDG_CONFIG_HOME/zsh/02-aliases.zsh
+source $XDG_CONFIG_HOME/zsh/03-functions.zsh
+source $XDG_CONFIG_HOME/zsh/04-integrations.zsh
+source $XDG_CONFIG_HOME/zsh/05-options.zsh
+source $XDG_CONFIG_HOME/zsh/06-plugins.zsh
+
+
