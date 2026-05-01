@@ -9,8 +9,7 @@ default:
   @just --list --unsorted
 
 # Configure zsh
-setup:
-    {{pwd}}/setup.zsh setup
+setup: create-symlinks
 
 # Install oh-my-zsh and plugins
 install:
@@ -21,6 +20,7 @@ create-symlinks:
    mkdir -p {{zsh_home}}
    mkdir -p "$HOME/scripts"
    mkdir -p "$HOME/.config/atuin"
+   ln -sf {{pwd}}/atuin.toml "$HOME/.config/atuin/config.toml"
    ln -sf {{pwd}}/{{dir}}/main.zsh "$HOME/.zshrc"
    ln -sf {{pwd}}/{{dir}}/01-env.zsh "$HOME/.config/zsh/01-env.zsh"
    ln -sf {{pwd}}/common/02-aliases.zsh "$HOME/.config/zsh/02-aliases.zsh"

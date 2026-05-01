@@ -6,7 +6,7 @@ default:
 
 # Configure all tools
 setup:
-  just wez/setup
+  just term/setup
   just zellij/setup
   just nvim/setup
   just vcs/setup

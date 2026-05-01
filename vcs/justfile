@@ -1,4 +1,5 @@
 jj_config_home := "$HOME/.config/jj"
+jjui_config_home := "$HOME/.config/jjui"
 pwd := absolute_path(".")
 
 # Display this help
@@ -8,7 +9,9 @@ default:
 # Create symlinks
 setup:
     mkdir -p {{jj_config_home}}
+    mkdir -p {{jjui_config_home}}
     ln -sf {{pwd}}/jj/config.toml {{jj_config_home}}/config.toml
+    ln -sf {{pwd}}/jj/jjui-config.toml {{jjui_config_home}}/config.toml
     ln -sf {{pwd}}/git/gitconfig $HOME/.gitconfig
     ln -sf {{pwd}}/git/gitignore_global $HOME/.gitignore_global
 
