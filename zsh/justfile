@@ -23,6 +23,7 @@ create-symlinks:
    ln -sf {{pwd}}/atuin.toml "$HOME/.config/atuin/config.toml"
    ln -sf {{pwd}}/{{dir}}/main.zsh "$HOME/.zshrc"
    ln -sf {{pwd}}/{{dir}}/01-env.zsh "$HOME/.config/zsh/01-env.zsh"
+   # ln -sf {{pwd}}/{{dir}}/0-aliases.zsh "$HOME/.config/zsh/02-aliases.zsh"
    ln -sf {{pwd}}/common/02-aliases.zsh "$HOME/.config/zsh/02-aliases.zsh"
    ln -sf {{pwd}}/common/03-functions.zsh "$HOME/.config/zsh/03-functions.zsh"
    ln -sf {{pwd}}/common/04-integrations.zsh "$HOME/.config/zsh/04-integrations.zsh"

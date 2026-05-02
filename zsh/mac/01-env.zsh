@@ -4,4 +4,5 @@ export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 export EDITOR="nvim"
 # export TERM="xterm-256color"
 export GOPATH="$HOME/go"
+export KUBECONFIG="${HOME}/.kube/config:${HOME}/.kube/doghouse"
 
