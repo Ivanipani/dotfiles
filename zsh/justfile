@@ -13,7 +13,7 @@ setup: create-symlinks
 
 # Install oh-my-zsh and plugins
 install:
-    {{pwd}}/setup.zsh install
+    git clone https://github.com/zplug/zplug $HOME/.zplug
 
 # Configure ZSH
 create-symlinks:
