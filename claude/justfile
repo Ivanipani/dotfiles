@@ -11,6 +11,7 @@ setup: create-symlinks
 # Create symlinks to the config files
 create-symlinks:
     mkdir -p {{config_home}}
-    ln -sf {{pwd}}/skills {{config_home}}/
+    ln -sf {{pwd}}/skills {{config_home}}
+    ln -sf {{pwd}}/CLAUDE.md {{config_home}}
 
 
