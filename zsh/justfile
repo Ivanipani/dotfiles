@@ -9,7 +9,7 @@ default:
   @just --list --unsorted
 
 # Configure zsh
-setup: create-symlinks
+setup: create-symlinks install
 
 # Install oh-my-zsh and plugins
 install:
