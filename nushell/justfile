@@ -1,6 +1,7 @@
 set unstable
 
 config_home := "$HOME/.config/nushell"
+system_share := "/usr/local/share/nushell"
 dir := if os() == "macos" {"mac"} else {"linux"}
 pwd := absolute_path(".")
 
@@ -14,6 +15,13 @@ setup:
     ln -sf {{pwd}}/{{dir}}/config.nu "$HOME/.config/nushell/config.nu"
     ln -sf {{pwd}}/{{dir}}/env.nu "$HOME/.config/nushell/env.nu"
     ln -sf {{pwd}}/{{dir}}/login.nu "$HOME/.config/nushell/login.nu"
+    # Per-user drop-in dirs: scripts/ + lib/ + plugins/ (searched via NU_*_DIRS),
+    # autoload/ (auto-sourced in interactive shells, no `use` needed).
+    mkdir -p {{config_home}}/scripts {{config_home}}/lib {{config_home}}/plugins {{config_home}}/autoload
+
+# Create the shared, system-wide library/plugin/autoload dirs (needs sudo)
+setup-system:
+    sudo mkdir -p {{system_share}}/lib {{system_share}}/plugins {{system_share}}/vendor/autoload
 
 
 # Install nushell

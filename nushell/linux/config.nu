@@ -1,6 +1,32 @@
 load-env {"SHELL": "nu"}
 
 # ============================================================================
+# Library & plugin search paths (parse-time consts — must live in config.nu).
+#
+#   use-on-demand libraries (then `use <name>`):
+#     ~/.config/nushell/scripts          per-user (Nushell default)
+#     ~/.config/nushell/lib              per-user
+#     /usr/local/share/nushell/lib       system-wide, shared by every user
+#
+#   plugins (`plugin add <bin>` / `plugin use <name>`):
+#     ~/.config/nushell/plugins          per-user (Nushell default)
+#     /usr/local/share/nushell/plugins   system-wide
+#
+#   zero-`use` drop-in (auto-sourced in interactive shells, no config needed):
+#     ~/.config/nushell/autoload                 per-user
+#     /usr/local/share/nushell/vendor/autoload   system-wide
+# ============================================================================
+const NU_LIB_DIRS = [
+    $"($nu.default-config-dir)/lib"
+    "/usr/local/share/nushell/lib"
+    ...$NU_LIB_DIRS
+]
+const NU_PLUGIN_DIRS = [
+    "/usr/local/share/nushell/plugins"
+    ...$NU_PLUGIN_DIRS
+]
+
+# ============================================================================
 # Environment — single source of truth lives in login.nu (the login shell's
 # job). Sourced here so non-login interactive shells get it too; `path add`
 # is idempotent, so login shells running it again is harmless.
