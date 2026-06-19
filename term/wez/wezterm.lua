@@ -10,4 +10,11 @@ config.keys = {
 }
 
 config.term = "xterm-256color"
+
+-- Ensure nushell (and any XDG-aware tool) uses ~/.config when launched as the
+-- login shell, where zsh never runs to export this.
+config.set_environment_variables = {
+    XDG_CONFIG_HOME = wezterm.home_dir .. "/.config",
+}
+
 return config

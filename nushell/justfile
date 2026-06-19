@@ -1,6 +1,5 @@
 set unstable
 
-config_home := "$HOME/.config/nushell"
 system_share := "/usr/local/share/nushell"
 dir := if os() == "macos" {"mac"} else {"linux"}
 pwd := absolute_path(".")
@@ -11,13 +10,27 @@ default:
 
 # Configure nushell
 setup:
-    mkdir -p {{config_home}}
-    ln -sf {{pwd}}/{{dir}}/config.nu "$HOME/.config/nushell/config.nu"
-    ln -sf {{pwd}}/{{dir}}/env.nu "$HOME/.config/nushell/env.nu"
-    ln -sf {{pwd}}/{{dir}}/login.nu "$HOME/.config/nushell/login.nu"
-    # Per-user drop-in dirs: scripts/ + lib/ + plugins/ (searched via NU_*_DIRS),
-    # autoload/ (auto-sourced in interactive shells, no `use` needed).
-    mkdir -p {{config_home}}/scripts {{config_home}}/lib {{config_home}}/plugins {{config_home}}/autoload
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="{{pwd}}/{{dir}}"
+    # Link into every dir nu might use as its config home:
+    #   - macOS login shell (no XDG_CONFIG_HOME): ~/Library/Application Support/nushell
+    #   - launched from zsh (sets XDG_CONFIG_HOME=~/.config): ~/.config/nushell
+    #   - Linux: ~/.config/nushell
+    if [[ "$(uname)" == "Darwin" ]]; then
+        targets=("$HOME/Library/Application Support/nushell" "$HOME/.config/nushell")
+    else
+        targets=("$HOME/.config/nushell")
+    fi
+    for d in "${targets[@]}"; do
+        # Per-user drop-in dirs: scripts/ lib/ plugins/ (searched via NU_*_DIRS),
+        # autoload/ (auto-sourced in interactive shells, no `use` needed).
+        mkdir -p "$d" "$d/scripts" "$d/lib" "$d/plugins" "$d/autoload"
+        ln -sf "$src/config.nu" "$d/config.nu"
+        ln -sf "$src/env.nu" "$d/env.nu"
+        ln -sf "$src/login.nu" "$d/login.nu"
+        echo "linked nushell config -> $d"
+    done
 
 # Create the shared, system-wide library/plugin/autoload dirs (needs sudo)
 setup-system:
