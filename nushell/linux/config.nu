@@ -1,26 +1,11 @@
 load-env {"SHELL": "nu"}
 
-# Repo root, resolved through the config.nu symlink (linux -> nushell -> dotfiles)
-let dotfile_dir = ($nu.config-path | path expand | path dirname | path dirname | path dirname)
-
 # ============================================================================
-# Environment (parity with zsh/linux/01-env.zsh + common integrations)
+# Environment — single source of truth lives in login.nu (the login shell's
+# job). Sourced here so non-login interactive shells get it too; `path add`
+# is idempotent, so login shells running it again is harmless.
 # ============================================================================
-use std/util "path add"
-path add ...[
-    "~/.local/bin"
-    "~/scripts"
-    "/usr/local/go/bin"
-    ($env.HOME | path join "go/bin")
-    ($env.HOME | path join ".cargo/bin")
-    ($env.HOME | path join ".bun/bin")
-]
-
-$env.EDITOR = "nvim"
-$env.GOPATH = ($env.HOME | path join "go")
-$env.XDG_CONFIG_HOME = ($env.HOME | path join ".config")
-$env.ZELLIJ_CONFIG_DIR = ($env.HOME | path join ".config/zellij")
-$env.DOTFILE_DIR = $dotfile_dir
+source ($nu.default-config-dir | path join "login.nu")
 
 # ============================================================================
 # Aliases (parity with zsh/common/02-aliases.zsh + zsh/linux/02-aliases.zsh)

@@ -1,38 +1,11 @@
 load-env {"SHELL": "nu"}
 
-# Repo root, resolved through the config.nu symlink (mac -> nushell -> dotfiles)
-let dotfile_dir = ($nu.config-path | path expand | path dirname | path dirname | path dirname)
-
 # ============================================================================
-# Environment (parity with zsh/mac/01-env.zsh + zsh/mac/main.zsh)
+# Environment — single source of truth lives in login.nu (the login shell's
+# job). Sourced here so non-login interactive shells get it too; `path add`
+# is idempotent, so login shells running it again is harmless.
 # ============================================================================
-use std/util "path add"
-path add ...[
-    "~/.bun/bin"
-    "~/.local/bin"
-    "~/scripts"
-    "/opt/homebrew/bin"
-    "/opt/homebrew/sbin"
-    "/usr/local/bin"
-    "/opt/homebrew/opt/postgresql@18/bin"
-    "/usr/local/go/bin"
-    ($env.HOME | path join "go/bin")
-    ($env.HOME | path join ".cargo/bin")
-]
-
-# Google Cloud SDK (only if installed)
-const gcloud_bin = "~/github/ivanipani/doghouse/google-cloud-sdk/bin"
-if ($gcloud_bin | path expand | path exists) { path add $gcloud_bin }
-
-$env.EDITOR = "nvim"
-$env.GOPATH = ($env.HOME | path join "go")
-$env.XDG_CONFIG_HOME = ($env.HOME | path join ".config")
-$env.ZELLIJ_CONFIG_DIR = ($env.HOME | path join ".config/zellij")
-$env.DOTFILE_DIR = $dotfile_dir
-$env.KUBECONFIG = ([
-    ($env.HOME | path join ".kube/config")
-    ($env.HOME | path join ".kube/doghouse")
-] | str join ":")
+source ($nu.default-config-dir | path join "login.nu")
 
 # ============================================================================
 # Aliases (parity with zsh/common/02-aliases.zsh)
