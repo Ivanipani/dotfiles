@@ -38,12 +38,19 @@ install-language-servers:
 # Install formatters
 [macos]
 install-formatters:
+    rustup component add rust-analyzer
     uv tool install ruff
+    uv tool install ty@latest
     cargo install stylua
+    cargo install --git https://github.com/nushell/nufmt
 
 # Install language servers
 [linux]
 install-language-servers:
     rustup component add rust-analyzer
-    uv tool install --with rope --with pylsp-rope --with python-lsp-ruff --with pylsp-mypy python-lsp-server
-    brew install lua-language-server
+    # uv tool install --with rope --with pylsp-rope --with python-lsp-ruff --with pylsp-mypy python-lsp-server
+    uv tool install ruff
+    uv tool install ty@latest
+    # brew install lua-language-server
+    cargo install stylua
+    cargo install --git https://github.com/nushell/nufmt

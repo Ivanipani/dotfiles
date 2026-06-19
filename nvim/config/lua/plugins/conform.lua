@@ -117,6 +117,7 @@ return { -- Autoformat
 			lua = { "stylua" },
 			python = { "ruff_format" },
 			rust = { "rustfmt" },
+			nu = { "nufmt" },
 			javascript = { "prettier" },
 			typescript = { "prettier" },
 			javascriptreact = { "prettier" },
