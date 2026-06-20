@@ -98,6 +98,15 @@ starship init nu | save -f ($nu.data-dir | path join "vendor/autoload/starship.n
 # Autosuggestions and syntax highlighting are built into Nushell.
 # ============================================================================
 $env.config.edit_mode = "vi"
+# Make the active vi mode obvious. starship blanks PROMPT_INDICATOR but leaves
+# the vi-specific indicators unset, so we own these: block cursor + yellow tag
+# in NORMAL, bar cursor + green tag in INSERT.
+$env.config.cursor_shape = {
+    vi_insert: "line"
+    vi_normal: "block"
+}
+$env.PROMPT_INDICATOR_VI_INSERT = $"(ansi { fg: 'black' bg: 'green' }) I (ansi reset) "
+$env.PROMPT_INDICATOR_VI_NORMAL = $"(ansi { fg: 'black' bg: 'yellow' }) N (ansi reset) "
 $env.config.show_banner = false
 $env.config.buffer_editor = "nvim"
 $env.config.hooks = {
