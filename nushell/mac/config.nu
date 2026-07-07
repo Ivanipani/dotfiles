@@ -142,6 +142,28 @@ def ff [
     $picked
 }
 
+# fuzzy executable picker -> record from `which` (command / path / type)
+def fx [] {
+    if (which fd | is-empty) or (which fzf | is-empty) {
+        print -e "[nu] fd/fzf not found, skipping executable picker (fx)"
+        return
+    }
+    let dirs = ($env.PATH | where ($it | path exists))
+    let paths = (
+        fd --type executable --max-depth 1 . ...$dirs
+        | lines
+        | sort
+    )
+    let selection = (
+        $paths
+        | str join (char newline)
+        | fzf --height=50% --padding=1% --border=double --header="CTRL-C or ESC to quit"
+        | str trim
+    )
+    if ($selection | is-empty) { return }
+    { command: ($selection | path basename), path: $selection, type: "external" }
+}
+
 # ============================================================================
 # Integrations (parity with zsh/common/04-integrations.zsh)
 # ============================================================================
