@@ -21,6 +21,7 @@ const NU_LIB_DIRS = [
     "/usr/local/share/nushell/lib"
     ...$NU_LIB_DIRS
 ]
+
 const NU_PLUGIN_DIRS = [
     "/usr/local/share/nushell/plugins"
     ...$NU_PLUGIN_DIRS
@@ -38,8 +39,12 @@ source ($nu.default-config-dir | path join "login.nu")
 # ============================================================================
 alias l = ls
 alias la = ls -a
-def lt [] { ls | sort-by modified }
-def lat [] { ls -a | sort-by modified }
+def lt [] {
+    ls | sort-by modified
+}
+def lat [] {
+    ls -a | sort-by modified
+}
 
 # alias v = nvim
 # alias vim = nvim
@@ -47,7 +52,7 @@ alias vimdiff = nvim -d
 
 alias k = kubectl
 alias h = history
-alias ec = nvim $env.DOTFILE_DIR     # edit dotfiles
+alias ec = nvim $env.DOTFILE_DIR # edit dotfiles
 def --env sc [] { exec nu }          # reload shell config
 
 def docker-stop-all [] {
@@ -79,12 +84,62 @@ def --env f [] {
         | str trim
     )
     if ($selection | is-empty) { return }
-    let target = ($env.HOME | path join $selection)
+    let target = $env.HOME | path join $selection
     if ($target | path type) == "dir" {
         cd $target
     } else {
         print $"Directory '($target)' does not exist."
     }
+}
+
+# fuzzy file picker
+def ff [
+    --interactive (-i)  # prompt for an action (view / edit / copy) instead of printing the path
+] {
+    if (which fd | is-empty) or (which fzf | is-empty) {
+        print -e "[nu] fd/fzf not found, skipping file picker (ff)"
+        return
+    }
+    let selection = (
+        fd --type file --type directory
+        | fzf --height=50% --padding=1% --border=double --header="CTRL-C or ESC to quit"
+        | str trim
+    )
+    if ($selection | is-empty) { return }
+    let target = $selection | path expand
+
+    # Record about the pick; `filename` is just one attribute. Pipelines that
+    # want the path should `ff | get path`.
+    let picked = (
+        ls $target
+        | first
+        | reject name
+        | insert filename ($target | path basename)
+        | insert path $target
+    )
+
+    if not $interactive {
+        return $picked
+    }
+
+    let action = ([
+        "open the file for viewing"
+        "open a neovim buffer"
+        "copy the contents to the clipboard"
+    ] | input list "What would you like to do?")
+
+    match $action {
+        "open the file for viewing" => {
+            if (which bat | is-not-empty) { ^bat $target } else { ^less $target }
+        }
+        "open a neovim buffer" => { ^nvim $target }
+        "copy the contents to the clipboard" => {
+            open --raw $target | ^pbcopy
+            print $"Copied contents of ($target) to the clipboard."
+        }
+    }
+
+    $picked
 }
 
 # ============================================================================
@@ -110,13 +165,15 @@ $env.PROMPT_INDICATOR_VI_NORMAL = $"(ansi { fg: 'black' bg: 'yellow' }) N (ansi 
 $env.config.show_banner = false
 $env.config.buffer_editor = "nvim"
 $env.config.hooks = {
-    pre_prompt: [{ ||
-        if (which direnv | is-empty) { return }
-        direnv export json | from json | default {} | load-env
-        if 'ENV_CONVERSION' in $env and 'PATH' in $env.ENV_CONVERSIONS {
-            $env.PATH = do $env.ENV_CONVERSIONS.PATH.from_string $env.PATH
+    pre_prompt: [
+        {||
+            if (which direnv | is-empty) { return }
+            direnv export json | from json | default {} | load-env
+            if 'ENV_CONVERSION' in $env and 'PATH' in $env.ENV_CONVERSIONS {
+                $env.PATH = do $env.ENV_CONVERSIONS.PATH.from_string $env.PATH
+            }
         }
-    }]
+    ]
 }
 
 # atuin shell history (generated in env.nu)
