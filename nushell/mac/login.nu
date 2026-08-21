@@ -35,3 +35,20 @@ $env.KUBECONFIG = ([
     ($env.HOME | path join ".kube/config")
     ($env.HOME | path join ".kube/doghouse")
 ] | str join ":")
+
+# Nix (Determinate). The installer only writes zsh/bash/fish integration, so
+# nushell needs the equivalent of profile.d/nix-daemon.sh by hand.
+const nix_default = "/nix/var/nix/profiles/default"
+if ($nix_default | path exists) {
+    let nix_link = ($env.HOME | path join ".nix-profile")
+    path add ($nix_link | path join "bin") ($nix_default | path join "bin")
+    $env.NIX_PROFILES = $"($nix_default) ($nix_link)"
+    $env.XDG_DATA_DIRS = ([
+        ($env.XDG_DATA_DIRS? | default "/usr/local/share:/usr/share")
+        ($nix_link | path join "share")
+        ($nix_default | path join "share")
+    ] | str join ":")
+    # Mirrors nix-daemon.sh's fallback: no system CA bundle exists on macOS.
+    let ca = ($nix_default | path join "etc/ssl/certs/ca-bundle.crt")
+    if ($ca | path exists) { $env.NIX_SSL_CERT_FILE = $ca }
+}

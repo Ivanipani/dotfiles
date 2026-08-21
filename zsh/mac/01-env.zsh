@@ -6,3 +6,7 @@ export EDITOR="nvim"
 export GOPATH="$HOME/go"
 export KUBECONFIG="${HOME}/.kube/config:${HOME}/.kube/doghouse"
 
+
+# Nix (Determinate). /etc/zshrc adds these, but the PATH above is rebuilt from
+# scratch afterwards and drops them.
+[ -d /nix/var/nix/profiles/default/bin ] && export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
