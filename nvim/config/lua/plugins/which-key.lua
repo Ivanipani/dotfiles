@@ -80,6 +80,9 @@ return {                -- Useful plugin to show you pending keybinds.
         }, {
             '<leader>g',
             group = '[G]itsigns'
+        }, {
+            '<leader>j',
+            group = '[J]ujutsu'
         } }
     }
 }
