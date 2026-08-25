@@ -1,6 +1,9 @@
 return { -- Adds git related signs to the gutter, as well as utilities for managing changes
     'lewis6991/gitsigns.nvim',
-    keys = {},
+    -- Was `keys = {}` with no event/cmd/ft, i.e. no load trigger at all: the
+    -- gutter signs and every <leader>g mapping only appeared once something
+    -- else happened to require gitsigns (conform's format_diffs, on save).
+    event = { 'BufReadPre', 'BufNewFile' },
     opts = {
         signs = {
             add = { text = '+' },
@@ -18,20 +21,19 @@ return { -- Adds git related signs to the gutter, as well as utilities for manag
                 vim.keymap.set(mode, l, r, opts)
             end
 
-            -- Navigation
+            -- Navigation: i goes back, o goes forward.
             map('n', '<leader>go', function()
                 gitsigns.nav_hunk 'next'
-            end, { desc = 'Jump to next git [c]hange' })
+            end, { desc = 'Next hunk (f[o]rward)' })
 
             map('n', '<leader>gi', function()
                 gitsigns.nav_hunk 'prev'
-            end, { desc = 'Jump to previous git [c]hange' })
+            end, { desc = 'Prev hunk (back, l[i]ke <C-i>)' })
 
-            -- normal mode
-            map('n', '<leader>gp', gitsigns.preview_hunk, { desc = 'git [p]review hunk' })
-            map('n', '<leader>gb', gitsigns.blame_line, { desc = 'git [b]lame line' })
-            -- Toggles
-            map('n', '<leader>gb', gitsigns.toggle_current_line_blame, { desc = '[T]oggle git show [b]lame line' })
+            map('n', '<leader>gp', gitsigns.preview_hunk, { desc = '[P]review hunk' })
+            map('n', '<leader>gb', gitsigns.blame_line, { desc = '[B]lame line' })
+            -- State toggles live under <leader>t, not with the git actions.
+            map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = 'Inline git [B]lame' })
         end
     },
 }

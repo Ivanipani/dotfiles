@@ -72,12 +72,12 @@ return {                -- Useful plugin to show you pending keybinds.
             '<leader>l',
             group = '[L]SP'
         }, {
-            '<leader>c',
-            group = '[C]opilot'
+            '<leader>y',
+            group = '[Y]ank / copy'
         }, {
-            '<leader>m',
-            group = '[M]onorepo'
-        },{
+            '<leader>x',
+            group = 'Trouble'
+        }, {
             '<leader>g',
             group = '[G]itsigns'
         } }

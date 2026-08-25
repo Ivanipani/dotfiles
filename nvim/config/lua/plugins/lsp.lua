@@ -41,6 +41,68 @@ return {
         --    That is to say, every time a new file is opened that is associated with
         --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
         --    function will be executed to configure the current buffer
+        -- rust-analyzer's experimental/externalDocs only ever returns a *web*
+        -- URL (it never populates a local path). Rewrite it onto the locally
+        -- generated docs so opening them costs no network request:
+        -- docs.rs -> target/doc, doc.rust-lang.org -> rustup sysroot.
+        local function local_doc(url, root)
+            local rest = url:match('^https://docs%.rs/[^/]+/[^/]+/(.+)$')
+            if rest then
+                return root .. '/target/doc/' .. rest, 'cargo'
+            end
+            rest = url:match('^https://doc%.rust%-lang%.org/[^/]+/(.+)$')
+            if rest then
+                local sysroot = vim.fn.system({ 'rustc', '--print', 'sysroot' }):gsub('%s+$', '')
+                return sysroot .. '/share/doc/rust/html/' .. rest, 'rustup'
+            end
+            return nil
+        end
+
+        local cargo_doc_running = false
+
+        -- Open a local doc page, building it first if it is not there yet.
+        -- NOTE: deliberately *not* --no-deps. That only builds this crate, so
+        -- any symbol from a dependency would still 404 after the build.
+        local function open_local_doc(path, root, source)
+            -- keep any #anchor for the browser, drop it to stat the file
+            local file, frag = path:match('^([^#]*)(.*)$')
+            local function open()
+                vim.ui.open(vim.uri_from_fname(file) .. frag)
+            end
+
+            if vim.fn.filereadable(file) == 1 then
+                return open()
+            end
+            if source ~= 'cargo' then
+                -- std docs ship as a rustup component; cargo cannot build them.
+                vim.notify('Run `rustup component add rust-docs`',
+                    vim.log.levels.WARN, { title = 'Missing std docs' })
+                return
+            end
+            if cargo_doc_running then
+                vim.notify('Already building', vim.log.levels.INFO, { title = 'cargo doc' })
+                return
+            end
+
+            cargo_doc_running = true
+            vim.notify('Building docs (first run can be slow)',
+                vim.log.levels.INFO, { title = 'cargo doc' })
+            vim.system({ 'cargo', 'doc' }, { cwd = root, text = true }, function(res)
+                cargo_doc_running = false
+                vim.schedule(function()
+                    if res.code ~= 0 then
+                        vim.notify(vim.trim(res.stderr or ''):sub(1, 400),
+                            vim.log.levels.ERROR, { title = 'cargo doc failed' })
+                    elseif vim.fn.filereadable(file) == 0 then
+                        vim.notify('Built, but no page for this symbol',
+                            vim.log.levels.WARN, { title = 'cargo doc' })
+                    else
+                        open()
+                    end
+                end)
+            end)
+        end
+
         vim.api.nvim_create_autocmd('LspAttach', {
             group = vim.api.nvim_create_augroup('kickstart-lsp-attach', { clear = true }),
             callback = function(event)
@@ -90,6 +152,91 @@ return {
                 --  Useful when you're not sure what type a variable is and you want to see
                 --  the definition of its *type*, not where it was *defined*.
                 map('<leader>lt', require('telescope.builtin').lsp_type_definitions, 'Goto [T]ype Definition')
+
+                -- Hover, sized and bordered. vim.lsp.buf.hover sets a focus_id,
+                -- so pressing K a second time jumps *into* the window -- that is
+                -- how you scroll a long docstring (then q or <C-w>c to close).
+                local float_opts = {
+                    border = 'rounded',
+                    max_width = 100,
+                    max_height = 25,
+                    wrap = true
+                }
+
+                map('K', function()
+                    vim.lsp.buf.hover(vim.tbl_extend('force', float_opts, {}))
+                end, 'Hover docs (press K again to scroll)')
+
+                -- rust-analyzer advertises experimental.hoverRange: it reports
+                -- the type of a whole selected expression. The Range goes in the
+                -- `position` field -- a separate `range` field is rejected with
+                -- "missing field `position`".
+                map('K', function()
+                    local c = vim.lsp.get_clients({ bufnr = event.buf, method = 'textDocument/hover' })[1]
+                    if not c then
+                        return
+                    end
+                    vim.api.nvim_feedkeys(
+                        vim.api.nvim_replace_termcodes('<Esc>', true, false, true), 'nx', false)
+                    local rp = vim.lsp.util.make_given_range_params(
+                        vim.api.nvim_buf_get_mark(event.buf, '<'),
+                        vim.api.nvim_buf_get_mark(event.buf, '>'),
+                        event.buf, c.offset_encoding)
+                    c:request('textDocument/hover',
+                        { textDocument = rp.textDocument, position = rp.range },
+                        function(_, result)
+                            if not (result and result.contents) then
+                                vim.notify('No type for selection', vim.log.levels.INFO)
+                                return
+                            end
+                            local md = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
+                            if vim.tbl_isempty(md) then
+                                return
+                            end
+                            vim.lsp.util.open_floating_preview(md, 'markdown',
+                                vim.tbl_extend('force', float_opts, { focus_id = 'hover-range' }))
+                        end, event.buf)
+                end, 'Hover type of selection', 'x')
+
+                -- Peek the definition in a float instead of jumping to it.
+                map('<leader>lp', function()
+                    local c = vim.lsp.get_clients({ bufnr = event.buf, method = 'textDocument/definition' })[1]
+                    if not c then
+                        return
+                    end
+                    local params = vim.lsp.util.make_position_params(0, c.offset_encoding)
+                    c:request('textDocument/definition', params, function(_, result)
+                        if not result or vim.tbl_isempty(result) then
+                            vim.notify('No definition found', vim.log.levels.INFO)
+                            return
+                        end
+                        local target = vim.islist(result) and result[1] or result
+                        vim.lsp.util.preview_location(target,
+                            vim.tbl_extend('force', float_opts, { focus_id = 'peek-definition' }))
+                    end, event.buf)
+                end, '[P]eek definition (no jump)')
+
+                -- NOTE: `client` is only bound further down this callback, so
+                -- look it up here rather than depending on statement order.
+                local attached = vim.lsp.get_client_by_id(event.data.client_id)
+                if attached and attached.name == 'rust_analyzer' then
+                    map('<leader>lk', function()
+                        local params = vim.lsp.util.make_position_params(0, attached.offset_encoding)
+                        attached:request('experimental/externalDocs', params, function(err, url)
+                            if err or type(url) ~= 'string' then
+                                vim.notify('No documentation for this symbol', vim.log.levels.WARN)
+                                return
+                            end
+                            local root = attached.root_dir or vim.fn.getcwd()
+                            local path, source = local_doc(url, root)
+                            if not path then
+                                vim.notify('Unrecognised docs URL: ' .. url, vim.log.levels.WARN)
+                                return
+                            end
+                            open_local_doc(path, root, source)
+                        end, event.buf)
+                    end, 'Open local doc[k]s (cargo doc)')
+                end
 
                 -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
                 ---@param client vim.lsp.Client
@@ -146,10 +293,13 @@ return {
                 -- The following code creates a keymap to toggle inlay hints in your
                 -- code, if the language server you are using supports them
                 if client and client_supports_method(client, vim.lsp.protocol.Methods.textDocument_inlayHint, event.buf) then
+                    -- On by default: for Rust the inferred types are most of
+                    -- the value. <leader>th turns them off when they crowd.
+                    vim.lsp.inlay_hint.enable(true, { bufnr = event.buf })
                     map('<leader>th', function()
                         vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled {
                             bufnr = event.buf
-                        })
+                        }, { bufnr = event.buf })
                     end, '[T]oggle Inlay [H]ints')
                 end
             end
@@ -260,6 +410,27 @@ return {
                 ['rust-analyzer'] = {
                     cargo = {
                         allFeatures = true
+                    },
+                    -- Defaults already enable type/parameter/chaining hints;
+                    -- these are the ones that ship off.
+                    inlayHints = {
+                        closureReturnTypeHints = { enable = 'with_block' },
+                        lifetimeElisionHints = { enable = 'skip_trivial', useParameterNames = true },
+                        discriminantHints = { enable = 'fieldless' },
+                        rangeExclusiveHints = { enable = true },
+                        expressionAdjustmentHints = { enable = 'reborrow' },
+                        closingBraceHints = { enable = true, minLines = 20 },
+                        maxLength = 40 -- default 25; long generics get elided
+                    },
+                    -- Make hover carry the whole picture: struct fields, enum
+                    -- variants, trait items and untruncated generics.
+                    hover = {
+                        actions = { enable = true },
+                        documentation = { enable = true, keywords = { enable = true } },
+                        links = { enable = true },
+                        memoryLayout = { enable = true, size = 'both', alignment = 'both', niches = true },
+                        show = { fields = 15, enumVariants = 15, traitAssocItems = 10 },
+                        maxSubstitutionLength = 80 -- default 20
                     },
                     -- Clippy instead of plain `cargo check` on save.
                     -- --no-deps keeps the lints (and the wait) to this workspace.
