@@ -216,6 +216,25 @@ return {
                     end, event.buf)
                 end, '[P]eek definition (no jump)')
 
+                -- Who calls this function? Results land in the quickfix list.
+                map('<leader>lc', vim.lsp.buf.incoming_calls, 'In[c]oming calls')
+
+                -- Source actions, standard LSP kinds: ruff answers both for
+                -- Python (isort + every safe autofix), vtsls for TS.
+                map('<leader>lo', function()
+                    vim.lsp.buf.code_action({
+                        context = { only = { 'source.organizeImports' } },
+                        apply = true
+                    })
+                end, '[O]rganize imports')
+
+                map('<leader>lF', function()
+                    vim.lsp.buf.code_action({
+                        context = { only = { 'source.fixAll' } },
+                        apply = true
+                    })
+                end, '[F]ix all auto-fixable lints')
+
                 -- NOTE: `client` is only bound further down this callback, so
                 -- look it up here rather than depending on statement order.
                 local attached = vim.lsp.get_client_by_id(event.data.client_id)
@@ -236,6 +255,12 @@ return {
                             open_local_doc(path, root, source)
                         end, event.buf)
                     end, 'Open local doc[k]s (cargo doc)')
+                end
+
+                -- ruff's hover only restates noqa codes, and whichever client
+                -- answers first wins the float -- leave hover to basedpyright.
+                if attached and attached.name == 'ruff' then
+                    attached.server_capabilities.hoverProvider = false
                 end
 
                 -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
@@ -304,6 +329,51 @@ return {
                 end
             end
         })
+
+        -- A rename is project-wide: the server sends edits for every file
+        -- that mentions the symbol. nvim applies them to buffers but writes
+        -- nothing, so the files you never opened sit modified and invisible --
+        -- it reads as "it only renamed in this file", and :q! throws the rest
+        -- away. Write back whatever the edit touched.
+        local rename_method = vim.lsp.protocol.Methods.textDocument_rename
+        local apply_rename = vim.lsp.handlers[rename_method]
+
+        vim.lsp.handlers[rename_method] = function(err, result, ctx)
+            apply_rename(err, result, ctx)
+            if err or not result then
+                return
+            end
+
+            local uris = {}
+            for uri in pairs(result.changes or {}) do
+                uris[uri] = true
+            end
+            -- documentChanges also carries create/rename/delete entries, which
+            -- have no textDocument and nothing to save.
+            for _, change in ipairs(result.documentChanges or {}) do
+                if change.textDocument then
+                    uris[change.textDocument.uri] = true
+                end
+            end
+
+            local written = 0
+            for uri in pairs(uris) do
+                local buf = vim.uri_to_bufnr(uri)
+                if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
+                    -- noautocmd: a file the rename opened behind your back
+                    -- should not also get format-on-save run over it.
+                    local ok = pcall(vim.api.nvim_buf_call, buf, function()
+                        vim.cmd('silent noautocmd write')
+                    end)
+                    written = written + (ok and 1 or 0)
+                end
+            end
+
+            if written > 0 then
+                vim.notify(('Renamed in %d file%s'):format(written, written == 1 and '' or 's'),
+                    vim.log.levels.INFO, { title = 'LSP rename' })
+            end
+        end
 
         -- rust-analyzer messages are long and frequently multi-line, so as
         -- virtual text they run off the right edge (`wrap` is off). Collapse
@@ -443,47 +513,98 @@ return {
         })
         vim.lsp.enable("rust_analyzer")
 
-        -- Python LSP (pylsp)
-        vim.lsp.config["pylsp"] = {
+        -- Python is split over two servers: basedpyright does types,
+        -- completion, inlay hints and navigation; ruff does lints, autofixes
+        -- and import sorting. basedpyright is the open-source pyright fork --
+        -- it re-adds the pieces upstream reserves for Pylance (inlay hints,
+        -- semantic tokens, call hierarchy) and infers more than ty, which is
+        -- still alpha, or pylsp, which leans on jedi.
+
+        -- Point basedpyright at the interpreter the project actually uses.
+        -- Without this it resolves imports against the system python and every
+        -- third-party import reads as unresolved. venv-selector (<leader>v)
+        -- overrides this at runtime when a different venv is picked.
+        local function python_path(root)
+            local venv = vim.env.VIRTUAL_ENV
+            if venv and venv ~= '' then
+                return venv .. '/bin/python'
+            end
+            for _, dir in ipairs({ '.venv', 'venv' }) do
+                local py = root .. '/' .. dir .. '/bin/python'
+                if vim.uv.fs_stat(py) then
+                    return py
+                end
+            end
+            return vim.fn.exepath('python3')
+        end
+
+        vim.lsp.config["basedpyright"] = {
             capabilities = capabilities,
+            -- Mutate the settings table in place: the client already holds a
+            -- reference to it by now, so reassigning config.settings would be
+            -- dropped on the floor. Only fill in a path nobody set -- when
+            -- venv-selector restarts the client it passes the picked venv here,
+            -- and that choice has to win over the guess.
+            before_init = function(_, config)
+                local py = config.settings.python or {}
+                if not py.pythonPath then
+                    py.pythonPath = python_path(config.root_dir or vim.fn.getcwd())
+                    config.settings.python = py
+                end
+            end,
             settings = {
-                pylsp = {
-                    cmd = { 'uv', 'run', '--with', 'python-lsp-server,,pylsp-rope,python-lsp-ruff' },
-                    plugins = {
-                        -- Disable built-in linters/formatters in favor of ruff
-                        pycodestyle = {
-                            enabled = false
+                basedpyright = {
+                    analysis = {
+                        -- Diagnose the whole project, not just open buffers --
+                        -- the equivalent of `cargo check` reporting the workspace.
+                        diagnosticMode = 'workspace',
+                        typeCheckingMode = 'standard',
+                        autoSearchPaths = true,
+                        -- Completions offer symbols that are not imported yet and
+                        -- add the import on accept.
+                        autoImportCompletions = true,
+                        -- Off by default upstream; these are the Rust-style
+                        -- inferred-type annotations. <leader>th toggles them.
+                        inlayHints = {
+                            variableTypes = true,
+                            functionReturnTypes = true,
+                            callArgumentNames = true,
+                            genericTypes = true
                         },
-                        pyflakes = {
-                            enabled = false
-                        },
-                        pylint = {
-                            enabled = false
-                        },
-                        mypy = {
-                            enabled = false
-                        },
-                        black = {
-                            enabled = false
-                        },
-                        isort = {
-                            enabled = false
-                        },
-                        autopep8 = {
-                            enabled = false
-                        },
-                        yapf = {
-                            enabled = false
-                        },
-                        -- Enable ruff for linting and formatting
-                        ruff = {
-                            enabled = true
+                        -- Ruff already flags these (F401/F841/F821). One
+                        -- squiggle per problem.
+                        diagnosticSeverityOverrides = {
+                            reportUnusedImport = 'none',
+                            reportUnusedVariable = 'none',
+                            reportUndefinedVariable = 'none'
                         }
+                    },
+                    -- ruff owns import sorting, via its isort rules.
+                    disableOrganizeImports = true
+                }
+            }
+        }
+        vim.lsp.enable("basedpyright")
+
+        -- Ruff as a second client: lint diagnostics and quick fixes as you
+        -- type, in the same spirit as clippy-on-save for Rust. Formatting
+        -- still goes through conform (plugins/conform.lua).
+        vim.lsp.config["ruff"] = {
+            capabilities = capabilities,
+            init_options = {
+                settings = {
+                    -- A project's ruff.toml/pyproject.toml wins; the rules
+                    -- below only apply where the project sets none.
+                    configurationPreference = 'filesystemFirst',
+                    lint = {
+                        -- Beyond ruff's default E4/E7/E9/F: imports, pyupgrade,
+                        -- bugbear, simplify, ruff's own lints.
+                        extendSelect = { 'I', 'UP', 'B', 'SIM', 'RUF' }
                     }
                 }
             }
         }
-        vim.lsp.enable("pylsp")
+        vim.lsp.enable("ruff")
 
         vim.lsp.config["vtsls"] = {
             capabilities = capabilities,

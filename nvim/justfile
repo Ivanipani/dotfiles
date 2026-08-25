@@ -32,7 +32,8 @@ install-neovim:
 [macos]
 install-language-servers:
     rustup component add rust-analyzer
-    uv tool install --with rope --with pylsp-rope --with python-lsp-ruff --with pylsp-mypy python-lsp-server
+    uv tool install basedpyright
+    uv tool install ruff
     brew install lua-language-server
 
 # Install formatters
@@ -48,7 +49,7 @@ install-formatters:
 [linux]
 install-language-servers:
     rustup component add rust-analyzer
-    # uv tool install --with rope --with pylsp-rope --with python-lsp-ruff --with pylsp-mypy python-lsp-server
+    uv tool install basedpyright
     uv tool install ruff
     uv tool install ty@latest
     # brew install lua-language-server
