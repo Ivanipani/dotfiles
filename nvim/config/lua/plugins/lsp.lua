@@ -155,6 +155,45 @@ return {
             end
         })
 
+        -- rust-analyzer messages are long and frequently multi-line, so as
+        -- virtual text they run off the right edge (`wrap` is off). Collapse
+        -- them to a short inline marker and let virtual_lines render the full
+        -- message, wrapped, under the cursor.
+        local virt_text_max_width = 60
+
+        -- Budget the marker against what is actually left on the line, so it
+        -- can never spill past the right edge. Returning nil drops the marker
+        -- entirely when the line is already too long; the sign column, the
+        -- underline and virtual_lines still flag it.
+        local function compact_message(diagnostic)
+            local msg = diagnostic.message:gsub('%s+', ' '):gsub('^%s+', '')
+
+            local avail = virt_text_max_width
+            local win = vim.fn.bufwinid(diagnostic.bufnr)
+            if win ~= -1 then
+                local info = vim.fn.getwininfo(win)[1]
+                local line = vim.api.nvim_buf_get_lines(diagnostic.bufnr, diagnostic.lnum,
+                    diagnostic.lnum + 1, false)[1] or ''
+                -- textoff drops the number/sign gutter; 6 covers spacing + prefix.
+                avail = math.min(avail,
+                    info.width - info.textoff - vim.fn.strdisplaywidth(line) - 6)
+            end
+
+            if avail < 12 then
+                return nil
+            end
+            if vim.fn.strdisplaywidth(msg) > avail then
+                msg = vim.fn.strcharpart(msg, 0, avail - 1) .. '…'
+            end
+            return msg
+        end
+
+        local virtual_text_opts = {
+            source = 'if_many',
+            spacing = 2,
+            format = compact_message
+        }
+
         -- Diagnostic Config
         -- See :help vim.diagnostic.Opts
         vim.diagnostic.config {
@@ -174,20 +213,31 @@ return {
                     [vim.diagnostic.severity.HINT] = '󰌶 '
                 }
             } or {},
-            virtual_text = {
-                source = 'if_many',
-                spacing = 2,
-                format = function(diagnostic)
-                    local diagnostic_message = {
-                        [vim.diagnostic.severity.ERROR] = diagnostic.message,
-                        [vim.diagnostic.severity.WARN] = diagnostic.message,
-                        [vim.diagnostic.severity.INFO] = diagnostic.message,
-                        [vim.diagnostic.severity.HINT] = diagnostic.message
-                    }
-                    return diagnostic_message[diagnostic.severity]
-                end
+            virtual_text = virtual_text_opts,
+            virtual_lines = {
+                current_line = true
             }
         }
+
+        -- virtual_text is rendered once, when diagnostics are set, so the width
+        -- budget above goes stale after a resize or a new split. An empty
+        -- config call re-shows every namespace, recomputing it.
+        vim.api.nvim_create_autocmd({ 'VimResized', 'WinResized' }, {
+            group = vim.api.nvim_create_augroup('diagnostic-refit', { clear = true }),
+            callback = function()
+                vim.diagnostic.config {}
+            end
+        })
+
+        -- Toggle between the compact markers and every diagnostic expanded in
+        -- full, for when a whole file's worth of errors needs reading at once.
+        vim.keymap.set('n', '<leader>td', function()
+            local expanded = vim.diagnostic.config().virtual_text == false
+            vim.diagnostic.config {
+                virtual_text = expanded and virtual_text_opts or false,
+                virtual_lines = expanded and { current_line = true } or true
+            }
+        end, { desc = '[T]oggle [D]iagnostic detail' })
 
         local capabilities = require('blink.cmp').get_lsp_capabilities()
         vim.lsp.config["lua_ls"] = {
@@ -210,6 +260,12 @@ return {
                 ['rust-analyzer'] = {
                     cargo = {
                         allFeatures = true
+                    },
+                    -- Clippy instead of plain `cargo check` on save.
+                    -- --no-deps keeps the lints (and the wait) to this workspace.
+                    check = {
+                        command = 'clippy',
+                        extraArgs = { '--no-deps' }
                     }
                 }
             }
