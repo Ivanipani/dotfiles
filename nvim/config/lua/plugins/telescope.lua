@@ -77,13 +77,16 @@ return { -- Fuzzy Finder (files, lsp, etc)
                     horizontal = { prompt_position = 'top' },
                     vertical = { prompt_position = 'top' },
                 },
+                -- .git internals are noise in every picker; dotfiles are not
+                file_ignore_patterns = { '^%.git/', '/%.git/' },
                 -- On demand only: <Esc> then '?'. Telescope's own <C-/>/<C-_>
                 -- insert-mode bindings still work, with default formatting.
                 mappings = {
                     n = { ['?'] = picker_help },
                 },
             },
-            pickers = { find_files = { hidden = false } },
+            -- hidden: `.gitignore`, `.github/` etc. are real files worth finding
+            pickers = { find_files = { hidden = true } },
             extensions = {
                 ['ui-select'] = {
                     require('telescope.themes').get_dropdown(),
