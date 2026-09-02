@@ -1,0 +1,27 @@
+# Rendered by `dot` from vcs/templates/gitconfig.j2 — edit the template, then `dot apply`.
+[user]
+    name = {{ v.user.name }}
+    email = {{ v.user.email }}
+
+[core]
+    editor = {{ v.editor.command }}
+    autocrlf = input
+    excludesfile = ~/.gitignore_global
+
+{% if v.git.credential_helper %}
+[credential]
+    helper = {{ v.git.credential_helper }}
+
+{% endif %}
+[diff]
+    external = difft
+
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    cm = commit
+    lg = log --oneline --graph --all
+
+[init]
+    defaultBranch = main

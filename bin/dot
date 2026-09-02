@@ -1,0 +1,11 @@
+#!/bin/sh
+# Launcher: resolves through symlinks so `ln -s .../dot.sh ~/scripts/dot` works.
+set -e
+src="$0"
+while [ -L "$src" ]; do
+  dir=$(cd -P "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+repo=$(cd -P "$(dirname "$src")" && pwd)
+exec uv run --project "$repo" --quiet python -m dot "$@"

@@ -1,0 +1,65 @@
+# Rendered by `dot` from nushell/templates/login.nu.j2 — edit the template, then `dot apply`.
+#
+# login.nu — runs once for login shells (`nu --login`), after config.nu.
+# The login shell is responsible for the environment inherited by every
+# subshell and child process. config.nu also sources this so non-login
+# interactive shells get the same environment. `path add` is idempotent,
+# so running it twice for a login shell is harmless.
+#
+# Parity with the rendered zsh 01-env.zsh.
+
+# The repo root, for opening it (`ec`) — never for reaching into its layout.
+# Anything a shell needs to *run* is symlinked onto PATH by the module that
+# owns it, so moving a file inside the repo shows up as drift, not a 404.
+$env.DOTFILE_DIR = "{{ repo }}"
+
+use std/util "path add"
+path add ...[
+{% for p in v.nushell.path %}
+{% if p.startswith('$HOME/') %}
+    ($env.HOME | path join "{{ p[6:] }}")
+{% else %}
+    "{{ p }}"
+{% endif %}
+{% endfor %}
+]
+{% if v.gcloud_sdk %}
+
+# Google Cloud SDK (only if installed)
+const gcloud_bin = "{{ v.gcloud_sdk }}/bin"
+if ($gcloud_bin | path expand | path exists) { path add $gcloud_bin }
+{% endif %}
+
+$env.EDITOR = "{{ v.editor.command }}"
+$env.GOPATH = ($env.HOME | path join "go")
+$env.XDG_CONFIG_HOME = ($env.HOME | path join ".config")
+$env.ZELLIJ_CONFIG_DIR = ($env.HOME | path join ".config/zellij")
+{% if v.shell.kubeconfigs %}
+$env.KUBECONFIG = ([
+{% for kc in v.shell.kubeconfigs %}
+{% if kc.startswith('$HOME/') %}
+    ($env.HOME | path join "{{ kc[6:] }}")
+{% else %}
+    "{{ kc }}"
+{% endif %}
+{% endfor %}
+] | str join ":")
+{% endif %}
+
+# Nix (Determinate). The installer only writes zsh/bash/fish integration, so
+# nushell needs the equivalent of profile.d/nix-daemon.sh by hand. Self-guarding,
+# so this block is harmless on a machine without Nix.
+const nix_default = "/nix/var/nix/profiles/default"
+if ($nix_default | path exists) {
+    let nix_link = ($env.HOME | path join ".nix-profile")
+    path add ($nix_link | path join "bin") ($nix_default | path join "bin")
+    $env.NIX_PROFILES = $"($nix_default) ($nix_link)"
+    $env.XDG_DATA_DIRS = ([
+        ($env.XDG_DATA_DIRS? | default "/usr/local/share:/usr/share")
+        ($nix_link | path join "share")
+        ($nix_default | path join "share")
+    ] | str join ":")
+    # Mirrors nix-daemon.sh's fallback: no system CA bundle exists on macOS.
+    let ca = ($nix_default | path join "etc/ssl/certs/ca-bundle.crt")
+    if ($ca | path exists) { $env.NIX_SSL_CERT_FILE = $ca }
+}

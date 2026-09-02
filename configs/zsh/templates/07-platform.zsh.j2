@@ -1,0 +1,7 @@
+# Rendered by `dot` from zsh/templates/07-platform.zsh.j2 — edit the template, then `dot apply`.
+# Aliases that only make sense on {{ host.os }}.
+{% for line in v.shell.platform_aliases %}
+{{ line }}
+{% else %}
+# (none for this platform)
+{% endfor %}

@@ -1,0 +1,19 @@
+# Rendered by `dot` from zsh/templates/01-env.zsh.j2 — edit the template, then `dot apply`.
+{% if v.shell.path_mode == "replace" %}
+export PATH="{{ v.shell.path | join(':') }}"
+{% else %}
+export PATH="{{ v.shell.path | join(':') }}:$PATH"
+{% endif %}
+{% if v.gcloud_sdk %}
+[ -d '{{ v.gcloud_sdk }}/bin' ] && export PATH="{{ v.gcloud_sdk }}/bin:$PATH"
+{% endif %}
+
+export EDITOR="{{ v.editor.command }}"
+export GOPATH="$HOME/go"
+{% if v.shell.kubeconfigs %}
+export KUBECONFIG="{{ v.shell.kubeconfigs | join(':') }}"
+{% endif %}
+
+# Nix (Determinate). /etc/zshrc adds these, but a PATH built with
+# path_mode = "replace" is rebuilt from scratch afterwards and drops them.
+[ -d /nix/var/nix/profiles/default/bin ] && export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"

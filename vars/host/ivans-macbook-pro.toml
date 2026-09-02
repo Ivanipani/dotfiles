@@ -1,0 +1,8 @@
+tags = ["gui", "laptop", "personal"]
+
+# Machine-local overrides go here; anything secret belongs in
+# ~/.config/dot/local.toml instead, which is never committed.
+# gcloud_sdk = "/Users/ivanperdomo/github/ivanipani/doghouse/google-cloud-sdk"
+
+[term]
+font_size = 0

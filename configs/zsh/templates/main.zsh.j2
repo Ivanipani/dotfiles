@@ -1,0 +1,24 @@
+# Rendered by `dot` from zsh/templates/main.zsh.j2 — edit the template, then `dot apply`.
+{% if host.linux %}
+prompt off
+{% endif %}
+
+export ZPLUG_HOME="{{ v.zsh.zplug_home }}"
+export XDG_CONFIG_HOME="$HOME/.config"
+
+# The repo root, for opening it (`ec`) — never for reaching into its layout.
+# Anything a shell needs to *run* is symlinked onto PATH by the module that
+# owns it, so moving a file inside the repo shows up as drift, not a 404.
+export DOTFILE_DIR="{{ repo }}"
+
+# Fragments are sourced in filename order; (N) keeps an empty dir from erroring.
+for _dot_fragment in "$XDG_CONFIG_HOME"/zsh/*.zsh(N); do
+    source "$_dot_fragment"
+done
+unset _dot_fragment
+{% if v.gcloud_sdk %}
+
+# Google Cloud SDK
+[ -f '{{ v.gcloud_sdk }}/path.zsh.inc' ] && . '{{ v.gcloud_sdk }}/path.zsh.inc'
+[ -f '{{ v.gcloud_sdk }}/completion.zsh.inc' ] && . '{{ v.gcloud_sdk }}/completion.zsh.inc'
+{% endif %}

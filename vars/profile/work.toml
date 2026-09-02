@@ -1,0 +1,4 @@
+# Placeholder for a work machine: same repo, different identity and extras.
+# Select it with DOT_PROFILE=work, or `profile = "work"` in a host/local file.
+[user]
+email = "iperdomo2016@gmail.com"

@@ -1,2 +1,9 @@
 *.wasm
 .claude
+
+# dot
+.build/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

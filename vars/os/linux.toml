@@ -1,0 +1,33 @@
+brew_prefix = ""
+
+[shell]
+path_mode = "prepend"
+path = [
+    "$HOME/.bun/bin",
+    "$HOME/.local/bin",
+    "$HOME/scripts",
+    "/usr/local/go/bin",
+    "$HOME/go/bin",
+    "$HOME/.cargo/bin",
+]
+platform_aliases = [
+    'alias ldisk="lsblk -d -o NAME,SIZE,MODEL,TRAN"',
+]
+
+[git]
+credential_helper = "cache"
+
+[zsh]
+zplug_home = "$HOME/.zplug"
+
+[nushell]
+editor_aliases = true
+clipboard = "^xclip -selection clipboard"
+path = [
+    "$HOME/.local/bin",
+    "$HOME/scripts",
+    "/usr/local/go/bin",
+    "$HOME/go/bin",
+    "$HOME/.cargo/bin",
+    "$HOME/.bun/bin",
+]

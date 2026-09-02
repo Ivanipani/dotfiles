@@ -1,0 +1,43 @@
+# Layer 1 of 5. Everything below is overridable by:
+#   vars/os/<os>.toml  ->  vars/profile/<profile>.toml
+#   ->  vars/host/<hostname>.toml  ->  ~/.config/dot/local.toml
+profile = "personal"
+tags = ["gui"]
+
+# Optional paths; empty means "not on this machine".
+gcloud_sdk = ""
+
+[user]
+name = "Ivan Perdomo"
+email = "iperdomo2016@gmail.com"
+
+[editor]
+command = "nvim"
+
+[term]
+font = "Inconsolata Nerd Font"
+font_size = 0    # 0 = leave the terminal at its own default
+color_scheme = "Ayu Mirage"
+
+[shell]
+# "replace" rebuilds PATH from this list; "prepend" keeps the inherited one.
+path_mode = "prepend"
+path = []
+kubeconfigs = ["$HOME/.kube/config"]
+platform_aliases = []
+
+[git]
+credential_helper = ""
+
+[claude]
+# Claude Code writes its auto-mode block itself, and it names whatever repo it
+# was pointed at — internal hosts, secret paths. This repo is public, so the
+# real value belongs in ~/.config/dot/local.toml; empty here means "omit it".
+auto_mode = {}
+
+[nushell]
+# `alias v = nvim` is commented out on macOS; keeping the switch here makes
+# that an explicit choice instead of two files that quietly drifted apart.
+editor_aliases = true
+clipboard = "^xclip -selection clipboard"
+path = []

@@ -1,0 +1,49 @@
+claude	dir	mkdir -p $HOME/.claude
+claude	symlink	ln -s $REPO/configs/claude/CLAUDE.md $HOME/.claude/CLAUDE.md
+claude	symlink	ln -s $REPO/configs/claude/skills $HOME/.claude/skills
+claude	symlink	ln -s $REPO/configs/claude/agents $HOME/.claude/agents
+claude	render	render settings.json.j2 -> $HOME/.claude/settings.json (copy)
+nushell	dir	mkdir -p $HOME/.config/nushell
+nushell	dir	mkdir -p $HOME/.config/nushell/scripts
+nushell	dir	mkdir -p $HOME/.config/nushell/lib
+nushell	dir	mkdir -p $HOME/.config/nushell/plugins
+nushell	dir	mkdir -p $HOME/.config/nushell/autoload
+nushell	render	render config.nu.j2 -> $HOME/.config/nushell/config.nu (symlink)
+nushell	render	render login.nu.j2 -> $HOME/.config/nushell/login.nu (symlink)
+nushell	symlink	ln -s $REPO/configs/nushell/env.nu $HOME/.config/nushell/env.nu
+nvim	symlink	ln -s $REPO/configs/nvim/config $HOME/.config/nvim
+tools	dir	mkdir -p $HOME/.local/bin
+tools	symlink	ln -s $REPO/bin/dot $HOME/.local/bin/dot
+vcs	dir	mkdir -p $HOME/.config/jj
+vcs	dir	mkdir -p $HOME/.config/jjui
+vcs	render	render jj-config.toml.j2 -> $HOME/.config/jj/config.toml (symlink)
+vcs	symlink	ln -s $REPO/configs/vcs/jj/jjui-config.toml $HOME/.config/jjui/config.toml
+vcs	render	render gitconfig.j2 -> $HOME/.gitconfig (symlink)
+vcs	symlink	ln -s $REPO/configs/vcs/git/gitignore_global $HOME/.gitignore_global
+zellij	dir	mkdir -p $HOME/.config/zellij
+zellij	symlink	ln -s $REPO/configs/zellij/config.kdl $HOME/.config/zellij/config.kdl
+zellij	symlink	ln -s $REPO/configs/zellij/layouts $HOME/.config/zellij/layouts
+zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
+zellij	fetch	fetch https://github.com/fresh2dev/zellij-autolock/releases/download/0.2.2/zellij-autolock.wasm -> $REPO/configs/zellij/plugins/zellij-autolock.wasm
+zellij	fetch	fetch https://github.com/laperlej/zellij-sessionizer/releases/download/v0.4.3/zellij-sessionizer.wasm -> $REPO/configs/zellij/plugins/zellij-sessionizer.wasm
+zellij	fetch	fetch https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm -> $REPO/configs/zellij/plugins/zellij-switch.wasm
+zellij	symlink	ln -s $REPO/configs/zellij/plugins $HOME/.config/zellij/plugins
+zellij	dir	mkdir -p $HOME/scripts
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.nu $HOME/scripts/sessionizer.nu
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.zsh $HOME/scripts/sessionizer.zsh
+zsh	dir	mkdir -p $HOME/.config/zsh
+zsh	render	render main.zsh.j2 -> $HOME/.zshrc (symlink)
+zsh	render	render 01-env.zsh.j2 -> $HOME/.config/zsh/01-env.zsh (symlink)
+zsh	render	render 07-platform.zsh.j2 -> $HOME/.config/zsh/07-platform.zsh (symlink)
+zsh	symlink	ln -s $REPO/configs/zsh/common/02-aliases.zsh $HOME/.config/zsh/02-aliases.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/03-functions.zsh $HOME/.config/zsh/03-functions.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/04-integrations.zsh $HOME/.config/zsh/04-integrations.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/05-options.zsh $HOME/.config/zsh/05-options.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/06-plugins.zsh $HOME/.config/zsh/06-plugins.zsh
+zsh	dir	mkdir -p $HOME/.config/atuin
+zsh	symlink	ln -s $REPO/configs/zsh/atuin.toml $HOME/.config/atuin/config.toml
+zsh	symlink	ln -s $REPO/configs/zsh/starship.toml $HOME/.config/starship.toml
+zsh	dir	mkdir -p $HOME/scripts
+zsh	symlink	ln -s $REPO/configs/zsh/scripts/retry $HOME/scripts/retry
+zsh	run	clone zplug

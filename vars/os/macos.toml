@@ -1,0 +1,46 @@
+brew_prefix = "/opt/homebrew"
+
+[shell]
+# Explicit and ordered: this is the exact PATH the machine had before the
+# tool existed, so a re-render is a no-op rather than a surprise.
+path_mode = "replace"
+path = [
+    "$HOME/go/bin",
+    "/usr/local/go/bin",
+    "/opt/homebrew/opt/postgresql@18/bin",
+    "$HOME/.bun/bin",
+    "$HOME/.local/bin",
+    "$HOME/scripts",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    "$HOME/.cargo/bin",
+]
+kubeconfigs = ["$HOME/.kube/config", "$HOME/.kube/doghouse"]
+platform_aliases = []
+
+[git]
+credential_helper = "osxkeychain"
+
+[zsh]
+zplug_home = "/opt/homebrew/opt/zplug"
+
+[nushell]
+editor_aliases = false
+clipboard = "^pbcopy"
+path = [
+    "$HOME/.bun/bin",
+    "$HOME/.local/bin",
+    "$HOME/scripts",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/opt/homebrew/opt/postgresql@18/bin",
+    "/usr/local/go/bin",
+    "$HOME/go/bin",
+    "$HOME/.cargo/bin",
+]
