@@ -2,6 +2,7 @@ claude	dir	mkdir -p $HOME/.claude
 claude	symlink	ln -s $REPO/configs/claude/CLAUDE.md $HOME/.claude/CLAUDE.md
 claude	symlink	ln -s $REPO/configs/claude/skills $HOME/.claude/skills
 claude	symlink	ln -s $REPO/configs/claude/agents $HOME/.claude/agents
+claude	symlink	ln -s $REPO/configs/claude/hooks $HOME/.claude/hooks
 claude	render	render settings.json.j2 -> $HOME/.claude/settings.json (copy)
 nushell	dir	mkdir -p $HOME/Library/Application Support/nushell
 nushell	dir	mkdir -p $HOME/Library/Application Support/nushell/scripts
@@ -36,9 +37,10 @@ zellij	dir	mkdir -p $HOME/.config/zellij
 zellij	symlink	ln -s $REPO/configs/zellij/config.kdl $HOME/.config/zellij/config.kdl
 zellij	symlink	ln -s $REPO/configs/zellij/layouts $HOME/.config/zellij/layouts
 zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
-zellij	fetch	fetch https://github.com/fresh2dev/zellij-autolock/releases/download/0.2.2/zellij-autolock.wasm -> $REPO/configs/zellij/plugins/zellij-autolock.wasm
+zellij	fetch	fetch https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm -> $REPO/configs/zellij/plugins/zellij-attention.wasm
 zellij	fetch	fetch https://github.com/laperlej/zellij-sessionizer/releases/download/v0.4.3/zellij-sessionizer.wasm -> $REPO/configs/zellij/plugins/zellij-sessionizer.wasm
 zellij	fetch	fetch https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm -> $REPO/configs/zellij/plugins/zellij-switch.wasm
+zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm
 zellij	symlink	ln -s $REPO/configs/zellij/plugins $HOME/.config/zellij/plugins
 zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh

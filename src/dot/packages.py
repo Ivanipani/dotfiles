@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -15,10 +16,57 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .facts import Host
+
+# How each manager spells "install exactly this version". `rustup` is absent on
+# purpose: a component has no version of its own, it has the toolchain's.
+PINS: dict[str, Callable[[str, str], list[str]]] = {
+    "brew": lambda name, version: [f"{name}@{version}"],
+    "cask": lambda name, version: [f"{name}@{version}"],
+    "apt": lambda name, version: [f"{name}={version}"],
+    "cargo": lambda name, version: [name, "--version", version],
+    "uv": lambda name, version: [f"{name}=={version}"],
+}
+
+# The first dotted number a `--version` banner prints, tag noise and all.
+VERSION = re.compile(r"\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.]+)?")
+
+
+def probe(binary: str) -> str | None:
+    """Best effort: the version `binary --version` reports, or None.
+
+    stdin is closed on purpose. `pants --version` outside a pants repo asks a
+    yes/no question, and a probe that can steal the terminal is worse than a
+    probe that gives up.
+    """
+    try:
+        out = subprocess.run(
+            [binary, "--version"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = VERSION.search(out.stdout or out.stderr)
+    return found.group(0) if found else None
+
+
+def satisfies(got: str, want: str) -> bool:
+    """Does `got` answer the pin `want`? A partial pin matches its own prefix.
+
+    `brew install node@20` gives you 20.11.1, and that is the pin honoured, so
+    a pin is satisfied by itself or by anything under it: 20 accepts 20.11.1,
+    20.11 does not accept 20.2.
+    """
+    want = want.lstrip("v")
+    return got == want or got.startswith(f"{want}.")
 
 
 @dataclass(frozen=True)
@@ -27,6 +75,7 @@ class Package:
     name: str
     args: tuple[str, ...] = ()
     bin: str | None = None
+    version: str | None = None
 
     @property
     def provides(self) -> str:
@@ -44,45 +93,69 @@ class Package:
         base = table.get(self.manager)
         if base is None:
             raise ValueError(f"unknown package manager: {self.manager}")
-        return [*base, *self.args, self.name]
+        if self.version is None:
+            return [*base, *self.args, self.name]
+        pin = PINS.get(self.manager)
+        if pin is None:
+            raise ValueError(f"{self.manager} cannot pin a version: {self.name} {self.version}")
+        return [*base, *self.args, *pin(self.name, self.version)]
 
     def describe(self) -> str:
         return " ".join(self.command())
 
+    def current(self, binary: str) -> bool:
+        """Is the binary at `binary` the version this package pins?
+
+        An unpinned package only has to exist. A pinned one that will not say
+        what it is counts as current: reinstalling on every run is worse than
+        trusting a binary we cannot interrogate.
+        """
+        if self.version is None:
+            return True
+        got = probe(binary)
+        return got is None or satisfies(got, self.version)
+
     def installed(self) -> bool:
-        return shutil.which(self.provides) is not None
+        found = shutil.which(self.provides)
+        return found is not None and self.current(found)
 
     def run(self) -> int:
         return subprocess.run(self.command()).returncode
 
 
-def brew(name: str, bin: str | None = None) -> Package:
-    return Package("brew", name, bin=bin)
+def brew(name: str, bin: str | None = None, *, version: str | None = None) -> Package:
+    return Package("brew", name, bin=bin, version=version)
 
 
-def cask(name: str, bin: str | None = None) -> Package:
-    return Package("cask", name, bin=bin)
+def cask(name: str, bin: str | None = None, *, version: str | None = None) -> Package:
+    return Package("cask", name, bin=bin, version=version)
 
 
-def apt(name: str, bin: str | None = None) -> Package:
-    return Package("apt", name, bin=bin)
+def apt(name: str, bin: str | None = None, *, version: str | None = None) -> Package:
+    return Package("apt", name, bin=bin, version=version)
 
 
 def cargo(
-    name: str, *, locked: bool = False, git: str | None = None, bin: str | None = None
+    name: str,
+    *,
+    locked: bool = False,
+    git: str | None = None,
+    bin: str | None = None,
+    version: str | None = None,
 ) -> Package:
     args: list[str] = []
     if locked:
         args.append("--locked")
     if git:
         args += ["--git", git]
-    return Package("cargo", name, tuple(args), bin=bin)
+    return Package("cargo", name, tuple(args), bin=bin, version=version)
 
 
-def uv_tool(name: str, bin: str | None = None) -> Package:
-    return Package("uv", name, bin=bin)
+def uv_tool(name: str, bin: str | None = None, *, version: str | None = None) -> Package:
+    return Package("uv", name, bin=bin, version=version)
 
 
+# No `version`: `rustup component add` installs whatever the toolchain carries.
 def rustup(name: str, bin: str | None = None) -> Package:
     return Package("rustup", name, bin=bin)
 
@@ -119,7 +192,10 @@ class Release(Package):
         return f"fetch {self.url} -> {self.dest / self.provides}"
 
     def installed(self) -> bool:
-        return (self.dest / self.provides).is_file() or super().installed()
+        landed = self.dest / self.provides
+        if landed.is_file():
+            return self.current(str(landed))
+        return super().installed()
 
     def run(self) -> int:
         try:
@@ -184,6 +260,7 @@ def github(
         manager="github",
         name=repo,
         bin=name,
+        version=tag.lstrip("v"),
         url=f"https://github.com/{repo}/releases/download/{tag}/{filename}",
         tag=tag,
         dest=dest or host.home / ".local" / "bin",

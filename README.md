@@ -108,6 +108,29 @@ subclasses `Action` and implements `check`/`apply`, so it stays inside the
 reconcile loop instead of escaping into shell. `Run` requires an `unless`
 predicate — without one it cannot be idempotent and reports an error.
 
+## Pinning a version
+
+Every package helper takes an optional `version`, and each manager spells the
+pin its own way:
+
+```python
+yield brew("node", version="20")  # brew install node@20
+yield apt("jq", version="1.7")  # sudo apt install -y jq=1.7
+yield uv_tool("ruff", version="0.16.5")  # uv tool install ruff==0.16.5
+yield cargo("zellij", locked=True, version="0.43.1")
+yield github("tilt-dev/tilt", "v0.37.7", ...)  # the tag is the pin
+```
+
+`rustup` has no `version`: `rustup component add` installs whatever the
+toolchain carries, so a pin there would be a lie.
+
+A pin is enforced, not just recorded. `dot install` asks a pinned binary for
+its `--version` and reinstalls when the answer disagrees, so moving `TILT` in
+`configs/tools/module.py` is enough to upgrade the machine. A partial pin is
+satisfied by anything under it (`20` accepts `20.11.1`), and a binary that
+prints no version it can parse is left alone — churning on every run is worse
+than trusting a tool that will not answer.
+
 ## Composition
 
 `plan()` is a pure function of a single frozen `Host`. Everything you may

@@ -34,7 +34,7 @@ class Zellij(Module):
     requires = ("zellij",)
 
     def packages(self, host):
-        yield cargo("zellij", locked=True)
+        yield cargo("zellij", locked=True, version="0.45.0")
 
     def plan(self, host):
         cfg = host.xdg_config / "zellij"

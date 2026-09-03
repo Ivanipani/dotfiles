@@ -9,7 +9,18 @@ from pathlib import Path
 import pytest
 from conftest import make_host
 
-from dot.packages import Release, github, install
+from dot.packages import (
+    Package,
+    Release,
+    apt,
+    brew,
+    cargo,
+    github,
+    install,
+    probe,
+    satisfies,
+    uv_tool,
+)
 
 
 @pytest.fixture
@@ -103,3 +114,82 @@ def test_installed_looks_in_the_destination(host, tmp_path):
     pkg.dest.mkdir(parents=True)
     (pkg.dest / "tool").write_text("")
     assert pkg.installed()
+
+
+# --------------------------------------------------------------------------- #
+# Version pins
+
+
+def test_each_manager_spells_the_pin_its_own_way():
+    assert brew("node", version="20").describe() == "brew install node@20"
+    assert apt("jq", version="1.7").describe() == "sudo apt install -y jq=1.7"
+    assert uv_tool("ruff", version="0.16.5").describe() == "uv tool install ruff==0.16.5"
+    assert (
+        cargo("zellij", locked=True, version="0.43.1").describe()
+        == "cargo install --locked zellij --version 0.43.1"
+    )
+
+
+def test_an_unpinned_package_installs_by_bare_name():
+    assert brew("node").describe() == "brew install node"
+
+
+def test_a_manager_that_cannot_pin_says_so():
+    with pytest.raises(ValueError, match="cannot pin"):
+        Package("rustup", "rust-analyzer", version="1.0").command()
+
+
+@pytest.mark.parametrize(
+    ("got", "want", "ok"),
+    [
+        ("0.43.1", "0.43.1", True),
+        ("0.43.1", "v0.43.1", True),  # tags keep their leading v
+        ("20.11.1", "20", True),  # a partial pin matches under itself
+        ("20.11.1", "20.11", True),
+        ("20.2.0", "20.11", False),
+        ("2.11", "2.1", False),  # prefix, but not on a dot boundary
+        ("0.43.0", "0.43.1", False),
+    ],
+)
+def test_satisfies_compares_on_dot_boundaries(got, want, ok):
+    assert satisfies(got, want) is ok
+
+
+def _stub(path: Path, banner: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\necho '{banner}'\n")
+    path.chmod(0o755)
+    return path
+
+
+def test_probe_reads_the_version_banner(tmp_path):
+    assert probe(str(_stub(tmp_path / "tool", "tool 1.2.3 (abc123)"))) == "1.2.3"
+    assert probe(str(_stub(tmp_path / "quiet", "no numbers here"))) is None
+    assert probe(str(tmp_path / "missing")) is None
+
+
+def test_installed_holds_a_pinned_package_to_its_version(tmp_path, monkeypatch):
+    _stub(tmp_path / "tool", "tool 1.2.3")
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert Package("brew", "tool").installed()
+    assert Package("brew", "tool", version="1.2").installed()
+    assert not Package("brew", "tool", version="1.3").installed()
+
+
+def test_a_binary_that_will_not_say_its_version_is_left_alone(tmp_path, monkeypatch):
+    _stub(tmp_path / "tool", "mystery build")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert Package("brew", "tool", version="1.3").installed()
+
+
+def test_a_release_reinstalls_when_the_tag_moves(host, tmp_path):
+    pkg = github("acme/tool", "v1.2.3", "{name}.tar.gz", host=host, dest=tmp_path / "bin")
+    assert pkg.version == "1.2.3"
+    assert not pkg.installed()
+
+    _stub(pkg.dest / "tool", "tool 1.2.3")
+    assert pkg.installed()
+
+    _stub(pkg.dest / "tool", "tool 1.2.2")
+    assert not pkg.installed()
