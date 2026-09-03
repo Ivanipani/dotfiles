@@ -35,6 +35,20 @@ credential_helper = ""
 # real value belongs in ~/.config/dot/local.toml; empty here means "omit it".
 auto_mode = {}
 
+[zellij]
+# The zjstatus bar renders its clock itself; without a zone it falls back to UTC.
+timezone = "America/New_York"
+# Appended to the shell PATH for the status-bar widgets, which run with no
+# profile sourced. Kept explicit so a Linux host (where `shell.path` is a
+# prepend list, not a full one) still finds jj and nu.
+extra_path = [
+    "$HOME/.local/bin",
+    "$HOME/.cargo/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+]
+
 [nushell]
 # `alias v = nvim` is commented out on macOS; keeping the switch here makes
 # that an explicit choice instead of two files that quietly drifted apart.

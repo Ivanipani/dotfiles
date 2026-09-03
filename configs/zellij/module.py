@@ -1,4 +1,4 @@
-from dot import Dir, Fetch, Module, Symlink, cargo
+from dot import Dir, Fetch, Module, Render, Symlink, cargo
 
 PLUGINS = (
     (
@@ -31,7 +31,8 @@ PLUGINS = (
 
 class Zellij(Module):
     name = "zellij"
-    requires = ("zellij",)
+    # nu is not optional any more: the zjstatus widgets are nushell scripts.
+    requires = ("zellij", "nu")
 
     def packages(self, host):
         yield cargo("zellij", locked=True, version="0.45.0")
@@ -39,7 +40,7 @@ class Zellij(Module):
     def plan(self, host):
         cfg = host.xdg_config / "zellij"
         yield Dir(cfg)
-        yield Symlink(self.path("config.kdl"), cfg / "config.kdl")
+        yield Render(self.path("templates/config.kdl.j2"), cfg / "config.kdl")
         yield Symlink(self.path("layouts"), cfg / "layouts")
         # Checksums pin the exact plugin builds that are known to work here.
         for name, url, digest in PLUGINS:

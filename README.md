@@ -167,7 +167,7 @@ Both end up as symlinks in your home directory, but they behave differently
 when you edit them:
 
 - **Symlinked** (`configs/zsh/common/*.zsh`, `configs/nvim/config`,
-  `configs/zellij/config.kdl`) —
+  `configs/zellij/layouts`) —
   edits in the repo are live immediately. Use this for anything you touch often.
 - **Rendered** (`configs/*/templates/*.j2`) — output goes to `.build/<fingerprint>/`
   and the destination links at that. Edit the **template**, then `dot apply`.
@@ -179,6 +179,61 @@ hashes, so it can tell a template change (`stale`, safe) from a hand edit
 (`edited`, refused) from both (`conflict`, refused). `~/.claude/settings.json`
 is the case that earns it: Claude Code rewrites that file itself, so copy mode
 surfaces its writes as `edited` instead of quietly losing them.
+
+## The zellij status bar
+
+[zjstatus](https://github.com/dj95/zjstatus) replaces zellij's builtin
+status bar. Tabs are not in it — the builtin `tab-bar` still runs above the
+panes and owns those.
+
+```
+ LOCK  dotfiles  qxknvvwl feat(zellij): custom status bar  main ↑2           17%   67%   100%  Thu 03 Sep 00:14 
+```
+
+Left to right: input mode, session name, the jj working copy, then cpu,
+memory, battery and the clock.
+
+The whole bar is configured once, as a plugin alias in
+`configs/zellij/templates/config.kdl.j2`. Layouts only name it:
+
+```kdl
+pane_template name="statusbar" borderless=true {
+    plugin location="zjstatus"
+}
+```
+
+so a new layout gets the bar for free, and one edit reaches every tab of every
+layout. (`size` is not valid on a `pane_template`; it goes at the use site,
+`statusbar size=1`.)
+
+**Why that file is a template.** zjstatus runs widget commands directly, with
+no shell — so `~` never expands and `PATH` is whatever the zellij server
+happened to inherit. Rendering lets the plan write an absolute interpreter, an
+absolute script path, and an explicit `PATH` built from the same vars the
+shells use.
+
+**Colours.** The Catppuccin Frappé palette is declared once in that plugin
+block as `color_*` entries. zjstatus resolves `$name` against them anywhere a
+format string is parsed — including the output of a widget script — so
+`configs/zellij/scripts/zjstatus-*.nu` emit `#[fg=$red]` and contain no hex
+codes. Retheming the bar is one block.
+
+**The widgets** are nushell, symlinked onto `PATH` like every other script
+here, and both print a line of zjstatus markup (`rendermode "dynamic"`):
+
+| script | shows | notes |
+| --- | --- | --- |
+| `zjstatus-jj.nu` | change id, description, bookmark, distance above it, and conflict / divergent / empty / immutable flags | one `jj log` for all of it |
+| `zjstatus-sys.nu` | cpu, memory and battery as a percentage of the whole machine | `top` on macOS, `/proc/stat` deltas on Linux |
+
+The jj widget runs `--ignore-working-copy`: a bar ticking every few seconds
+must never take the working-copy lock or race `jjui`. The cost is that edits
+appear only once something else snapshots. It follows `{focused_pane_cwd}`, so
+it describes the repo you are looking at, and prints nothing outside a repo
+(`hideonemptystdout`) rather than leaving a gap.
+
+zjstatus asks for `ReadApplicationState`, `ChangeApplicationState` and
+`RunCommands` the first time it loads; the grant is cached per plugin path.
 
 ## Scripts a shell calls
 

@@ -34,7 +34,7 @@ vcs	symlink	ln -s $REPO/configs/vcs/jj/jjui-config.toml $HOME/.config/jjui/confi
 vcs	render	render gitconfig.j2 -> $HOME/.gitconfig (symlink)
 vcs	symlink	ln -s $REPO/configs/vcs/git/gitignore_global $HOME/.gitignore_global
 zellij	dir	mkdir -p $HOME/.config/zellij
-zellij	symlink	ln -s $REPO/configs/zellij/config.kdl $HOME/.config/zellij/config.kdl
+zellij	render	render config.kdl.j2 -> $HOME/.config/zellij/config.kdl (symlink)
 zellij	symlink	ln -s $REPO/configs/zellij/layouts $HOME/.config/zellij/layouts
 zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
 zellij	fetch	fetch https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm -> $REPO/configs/zellij/plugins/zellij-attention.wasm
@@ -46,6 +46,8 @@ zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.nu $HOME/scripts/sessionizer.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.zsh $HOME/scripts/sessionizer.zsh
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-jj.nu $HOME/scripts/zjstatus-jj.nu
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-sys.nu $HOME/scripts/zjstatus-sys.nu
 zsh	dir	mkdir -p $HOME/.config/zsh
 zsh	render	render main.zsh.j2 -> $HOME/.zshrc (symlink)
 zsh	render	render 01-env.zsh.j2 -> $HOME/.config/zsh/01-env.zsh (symlink)

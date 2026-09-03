@@ -1,57 +1,45 @@
 layout {
+    // Chrome, declared once per layout: the builtin tab-bar still owns tabs,
+    // and zjstatus (configured in config.kdl) owns everything else.
+    pane_template name="tabbar" borderless=true {
+        plugin location="zellij:tab-bar"
+    }
+    pane_template name="statusbar" borderless=true {
+        plugin location="zjstatus"
+    }
+
     tab name="editor" hide_floating_panes=true focus=true {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
+        tabbar size=1
         pane command="nvim" borderless=true {
             args "."
         }
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
+        statusbar size=1
     }
     tab name="claude" hide_floating_panes=true {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
+        tabbar size=1
         pane command="claude" borderless=true {
             args "."
         }
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
+        statusbar size=1
     }
     tab name="jj" hide_floating_panes=true {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
+        tabbar size=1
         pane command="jjui" size="60%"
         pane size="40%"
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
+        statusbar size=1
     }
     tab name="tests" hide_floating_panes=true {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
+        tabbar size=1
         pane stacked=true {
             pane name="host" expanded=true {
             }
             pane name="docker"
         }
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
+        statusbar size=1
     }
     new_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
+        tabbar size=1
         pane
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
+        statusbar size=1
     }
 }
-
