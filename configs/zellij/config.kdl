@@ -230,6 +230,13 @@ plugins {
 load_plugins {
     navigator
     switcher
+    "file:~/.config/zellij/plugins/zellij-attention.wasm" {
+        // All options are optional — defaults shown
+        enabled "true"
+        waiting_icon "⏳"
+        completed_icon "✅"
+    }
+}
 }
 web_client {
     font "monospace"

@@ -21,5 +21,32 @@
   "voiceEnabled": true,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true{% if v.claude.auto_mode %},
-  "autoMode": {{ v.claude.auto_mode | json | indent(2) }}{% endif %}
+  "autoMode": {{ v.claude.auto_mode | json | indent(2) }}{% endif %},
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zellij pipe --name \"zellij-attention::waiting::$ZELLIJ_PANE_ID\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zellij pipe --name \"zellij-attention::completed::$ZELLIJ_PANE_ID\""
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/jj-commit.sh"
+          }
+        ]
+      }
+    ]
+  }
 }

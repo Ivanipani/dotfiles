@@ -7,9 +7,9 @@ PLUGINS = (
         "77e5a2f62f7c1a698caf2574493d5d75587e0fd877cfba34c48caf731c24c58d",
     ),
     (
-        "zellij-autolock",
-        "https://github.com/fresh2dev/zellij-autolock/releases/download/0.2.2/zellij-autolock.wasm",
-        "69c95607bfd97e075d6762a44fdbc703a82a3c4909dbbbe43952f020487b8ea4",
+        "zellij-attention",
+        "https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm",
+        "4209337ab61a731448ec733362f3ef699a905bbb5c0112a93a6d616360fd722f",
     ),
     (
         "zellij-sessionizer",
