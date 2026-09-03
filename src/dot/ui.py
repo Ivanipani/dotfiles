@@ -17,6 +17,7 @@ from rich.tree import Tree
 
 from .actions import Status
 from .facts import Host
+from .packages import satisfies
 from .theme import (
     KIND_GLYPH,
     RESULT_GLYPH,
@@ -229,19 +230,34 @@ def facts_view(host: Host, enabled: Sequence[str], disabled: Sequence[str]) -> R
 # doctor / apply / diff
 
 
-def doctor_table(rows: Iterable[tuple[str, str, str | None]]) -> Table:
+def version_cell(want: str | None, got: str | None) -> Text:
+    """Pinned vs found, in one cell. Empty when nothing is pinned."""
+    if want is None:
+        return Text("", style=S.detail)
+    if got is None:
+        return Text(f"{want} ?", style=S.hint)  # pinned, but it will not say
+    if satisfies(got, want):
+        return Text(got, style=S.ok)
+    return Text(f"{got} ≠ {want}", style=S.error)
+
+
+def doctor_table(rows: Iterable[tuple[str, str, str | None, str | None, str | None]]) -> Table:
+    """rows: (module, binary, path, pinned version, found version)."""
     table = _table(
         ("", {"style": S.module, "no_wrap": True, "width": 10}),
         ("binary", {"no_wrap": True}),
+        ("version", {"no_wrap": True}),
         ("path", {"style": S.detail, "overflow": "fold"}),
     )
     previous = None
-    for module, binary, found in rows:
+    for module, binary, found, want, got in rows:
         if previous is not None and module != previous:
             table.add_section()
         label = Text(module, style=S.module) if module != previous else Text("")
-        mark = Text("✔ ", style=S.ok) if found else Text("✖ ", style=S.error)
-        table.add_row(label, mark + Text(binary), found or "not found")
+        drifted = want is not None and got is not None and not satisfies(got, want)
+        ok = bool(found) and not drifted
+        mark = Text("✔ ", style=S.ok) if ok else Text("✖ ", style=S.error)
+        table.add_row(label, mark + Text(binary), version_cell(want, got), found or "not found")
         previous = module
     return table
 

@@ -37,7 +37,7 @@ After the first `apply`, `dot` is on your `PATH` (`~/.local/bin/dot`)
 | `dot plan [module]` | the raw action list a module produces |
 | `dot apply [module]` | reconcile; `-n` dry run, `-f` overwrite unmanaged/hand-edited files |
 | `dot install [module]` | install declared packages (slow, networked — deliberately separate from `apply`) |
-| `dot doctor [module]` | check the binaries each module declares in `requires` |
+| `dot doctor [module]` | check the binaries each module declares in `requires`, and hold pinned ones to their version |
 | `dot adopt <path> <module>` | move an existing file into the repo and link it back |
 | `dot prune` | remove entries no plan produces any more |
 | `dot remove <module>` | unwind a module |
@@ -130,6 +130,11 @@ its `--version` and reinstalls when the answer disagrees, so moving `TILT` in
 satisfied by anything under it (`20` accepts `20.11.1`), and a binary that
 prints no version it can parse is left alone — churning on every run is worse
 than trusting a tool that will not answer.
+
+`dot doctor` reports the same comparison instead of acting on it: a `version`
+column showing what is installed, `0.44.0 ≠ 0.45.0` and a failed row when a pin
+has drifted, `0.13.2 ?` when the binary will not say. Only pinned binaries are
+probed, so doctor stays a cheap `which` for everything else.
 
 ## Composition
 

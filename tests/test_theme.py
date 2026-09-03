@@ -56,7 +56,16 @@ def test_shared_renderables_survive_a_themeless_console(repo, modules, host, ctx
     render(ui.result_bar({"applied": 1, "blocked": 2, "failed": 3, "unchanged": 4}))
 
     render(ui.facts_view(host, [m.name for m in modules], []))
-    render(ui.doctor_table([("vcs", "git", "/usr/bin/git"), ("vcs", "jj", None)]))
+    render(
+        ui.doctor_table(
+            [
+                ("vcs", "git", "/usr/bin/git", None, None),
+                ("vcs", "jj", "/usr/bin/jj", "0.34.0", "0.33.0"),
+                ("vcs", "difft", "/usr/bin/difft", "0.60", None),
+                ("vcs", "lazygit", None, None, None),
+            ]
+        )
+    )
     render(ui.banner(host, "test"))
     render(ui.hint("a hint"))
 

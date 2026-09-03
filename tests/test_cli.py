@@ -129,3 +129,27 @@ def test_install_dry_run_prints_commands_without_running_them(run):
     result = run("install", "--dry-run", "--force", "vcs")
     assert result.exit_code == 0
     assert "brew install" in result.output or "cargo install" in result.output
+
+
+def test_doctor_reports_pinned_against_found(run, monkeypatch):
+    """`tools` pins the scie-pants tag, so doctor must hold `pants` to it."""
+    monkeypatch.setattr("dot.cli.shutil.which", lambda binary: f"/fake/bin/{binary}")
+
+    monkeypatch.setattr("dot.cli.probe", lambda _binary: "0.13.2")
+    ok = run("doctor", "tools")
+    assert ok.exit_code == 0
+    assert "0.13.2" in ok.output
+
+    monkeypatch.setattr("dot.cli.probe", lambda _binary: "0.0.1")
+    drifted = run("doctor", "tools")
+    assert drifted.exit_code == 1
+    assert "1 outdated" in drifted.output
+
+
+def test_doctor_leaves_unpinned_binaries_unprobed(run, monkeypatch):
+    monkeypatch.setattr("dot.cli.shutil.which", lambda binary: f"/fake/bin/{binary}")
+    probed: list[str] = []
+    monkeypatch.setattr("dot.cli.probe", lambda binary: probed.append(binary) or "0.13.2")
+
+    assert run("doctor", "tools").exit_code == 0
+    assert probed == ["/fake/bin/pants"]

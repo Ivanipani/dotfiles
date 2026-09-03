@@ -15,6 +15,7 @@ from . import __version__, reconcile, session, ui
 from .actions import Ctx, Status
 from .modules import Module
 from .packages import install as install_package
+from .packages import probe, satisfies
 from .session import UnknownModule
 from .ui import console, err_console
 
@@ -110,20 +111,35 @@ def facts() -> None:
 
 @app.command(rich_help_panel=INSPECT)
 def doctor(modules: Modules = None) -> None:
-    """Check that the binaries each module declares are installed."""
+    """Check the binaries each module declares, and hold pinned ones to their version."""
     ctx, mods = _setup()
     console.print(ui.banner(ctx.host, "doctor"))
-    rows, missing = [], 0
-    for mod in _select(mods, modules):
-        if not mod.enabled(ctx.host):
-            continue
+    enabled = [mod for mod in _select(mods, modules) if mod.enabled(ctx.host)]
+    # Only pinned binaries are probed: doctor stays a cheap `which` for the rest.
+    pins = {
+        pkg.provides: pkg.version
+        for mod in enabled
+        for pkg in mod.packages(ctx.host)
+        if pkg.version
+    }
+    rows: list[tuple[str, str, str | None, str | None, str | None]] = []
+    missing = outdated = 0
+    for mod in enabled:
         for binary in mod.requires:
             found = shutil.which(binary)
+            want = pins.get(binary)
+            got = probe(found) if found and want else None
             missing += not found
-            rows.append((mod.name, binary, found))
+            outdated += bool(want and got and not satisfies(got, want))
+            rows.append((mod.name, binary, found, want, got))
     console.print(ui.doctor_table(rows))
-    if missing:
-        console.print(ui.hint(f"{missing} missing — try [head]dot install[/head]"))
+    trouble = [
+        label
+        for count, label in ((missing, f"{missing} missing"), (outdated, f"{outdated} outdated"))
+        if count
+    ]
+    if trouble:
+        console.print(ui.hint(f"{', '.join(trouble)} — try [head]dot install[/head]"))
         raise typer.Exit(1)
     console.print(ui.hint("all required binaries present"))
 
