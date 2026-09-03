@@ -237,7 +237,6 @@ load_plugins {
         completed_icon "✅"
     }
 }
-}
 web_client {
     font "monospace"
 }

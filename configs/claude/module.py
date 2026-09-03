@@ -10,6 +10,7 @@ class Claude(Module):
         yield Symlink(self.path("CLAUDE.md"), root / "CLAUDE.md")
         yield Symlink(self.path("skills"), root / "skills")
         yield Symlink(self.path("agents"), root / "agents")
+        yield Symlink(self.path("hooks"), root / "hooks")
         # Claude Code rewrites this file itself — /config toggles, and the
         # auto-mode block it regenerates per repo — so it cannot be a symlink
         # into the repo. Copy mode hashes the content instead, which makes its
