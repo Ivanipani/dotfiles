@@ -21,6 +21,11 @@ PLUGINS = (
         "https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm",
         "ef257e41ffeb73337ed1dead309942d14663d12d8f58170f0cdab5045b0a22ae",
     ),
+    (
+        "zjstatus",
+        "https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm",
+        "282ceab219e56e1908c9fac33907241fe6c3e1ef7d85faab3e5f438cef87b8fe",
+    ),
 )
 
 
