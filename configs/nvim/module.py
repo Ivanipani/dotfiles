@@ -6,6 +6,8 @@ class Nvim(Module):
     requires = ("nvim",)
 
     def packages(self, host):
+        # Unpinned: homebrew-core ships no versioned neovim formula, so
+        # `neovim@x.y.z` is not a thing brew can install.
         yield brew("neovim", bin="nvim") if host.macos else apt("neovim", bin="nvim")
         yield rustup("rust-analyzer")
         yield uv_tool("basedpyright")
