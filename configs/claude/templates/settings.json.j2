@@ -23,14 +23,50 @@
   "skipAutoPermissionPrompt": true{% if v.claude.auto_mode %},
   "autoMode": {{ v.claude.auto_mode | json | indent(2) }}{% endif %},
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/jj-context.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/jj-guard.sh"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
-        "matcher": "",
+        "matcher": "permission_prompt|idle_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog",
         "hooks": [
           {
             "type": "command",
             "command": "[ -n \"$ZELLIJ\" ] && zellij pipe --name \"zellij-attention::waiting::$ZELLIJ_PANE_ID\" || true"
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "agent_completed",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$ZELLIJ\" ] && zellij pipe --name \"zellij-attention::completed::$ZELLIJ_PANE_ID\" || true"
+          }
+        ]
+      },
+      {
+        "matcher": "permission_prompt|idle_prompt|agent_needs_input|agent_completed|elicitation_dialog|elicitation_url_dialog|quota_auto_resume_fired|quota_auto_resume_stale",
+        "hooks": [
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/notify.sh"
