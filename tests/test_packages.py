@@ -96,6 +96,42 @@ def test_fetch_gunzips_a_bare_binary(host, tmp_path):
     assert _release(tmp_path, blob).fetch().read_text() == src.read_text()
 
 
+def test_fetch_keeps_the_whole_tree_and_symlinks_the_binary(host, tmp_path):
+    src = _payload(tmp_path)
+    runtime = tmp_path / "src" / "runtime.vim"
+    runtime.write_text("set nocompatible\n")
+    blob = tmp_path / "tool.tar.gz"
+    with tarfile.open(blob, "w:gz") as tf:
+        tf.add(src, arcname="tool-v1/bin/tool")
+        tf.add(runtime, arcname="tool-v1/share/runtime.vim")
+
+    tree = tmp_path / "opt" / "tool"
+    landed = _release(tmp_path, blob, member="tool-v1/bin/tool", tree=tree).fetch()
+    assert landed == tmp_path / "bin" / "tool"
+    assert landed.is_symlink() and landed.resolve() == tree / "bin" / "tool"
+    assert (tree / "share" / "runtime.vim").read_text() == runtime.read_text()
+
+
+def test_a_tree_install_replaces_the_old_tree(host, tmp_path):
+    src = _payload(tmp_path)
+    blob = tmp_path / "tool.tar.gz"
+    with tarfile.open(blob, "w:gz") as tf:
+        tf.add(src, arcname="tool-v1/bin/tool")
+
+    tree = tmp_path / "opt" / "tool"
+    (tree / "bin").mkdir(parents=True)
+    (tree / "stale").write_text("from the last version")
+    _release(tmp_path, blob, member="tool-v1/bin/tool", tree=tree).fetch()
+    assert not (tree / "stale").exists()
+
+
+def test_member_resolves_host_facts(host):
+    pkg = github(
+        "neovim/neovim", "v0.12.4", "{name}-{os}.tar.gz", host=host, member="{name}-{os}/bin/{name}"
+    )
+    assert pkg.member == "neovim-darwin/bin/neovim"
+
+
 def test_checksum_mismatch_fails_the_install(host, tmp_path, capsys):
     src = _payload(tmp_path)
     blob = tmp_path / "tool.tar.gz"

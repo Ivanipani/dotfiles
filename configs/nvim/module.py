@@ -1,4 +1,6 @@
-from dot import Module, Symlink, apt, brew, cargo, rustup, uv_tool
+from dot import Module, Symlink, brew, cargo, github, rustup, uv_tool
+
+NVIM = "v0.12.4"
 
 
 class Nvim(Module):
@@ -6,9 +8,19 @@ class Nvim(Module):
     requires = ("nvim",)
 
     def packages(self, host):
-        # Unpinned: homebrew-core ships no versioned neovim formula, so
-        # `neovim@x.y.z` is not a thing brew can install.
-        yield brew("neovim", bin="nvim") if host.macos else apt("neovim", bin="nvim")
+        # Straight from the release: brew has no versioned neovim formula and
+        # apt's is always old. The tarball is a whole prefix, hence `tree`.
+        arch = "arm64" if host.arch in ("arm64", "aarch64") else "x86_64"
+        slug = f"{'macos' if host.macos else 'linux'}-{arch}"
+        yield github(
+            "neovim/neovim",
+            NVIM,
+            f"nvim-{slug}.tar.gz",
+            host=host,
+            bin="nvim",
+            member=f"nvim-{slug}/bin/nvim",
+            tree=True,
+        )
         yield rustup("rust-analyzer")
         yield uv_tool("basedpyright")
         yield uv_tool("ruff")

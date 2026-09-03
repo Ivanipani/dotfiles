@@ -177,6 +177,7 @@ class Release(Package):
 
     No package manager owns it, so `dot install` downloads the asset itself,
     unpacks whatever archive it is, and drops the binary in ~/.local/bin.
+    With `tree`, the unpacked prefix is kept and only symlinked onto PATH.
     """
 
     url: str = ""
@@ -184,12 +185,13 @@ class Release(Package):
     dest: Path = field(default_factory=Path)
     member: str | None = None
     sha256: str | None = None
+    tree: Path | None = None
 
     def command(self) -> list[str]:
         raise ValueError(f"{self.name} is a release asset, not a package manager install")
 
     def describe(self) -> str:
-        return f"fetch {self.url} -> {self.dest / self.provides}"
+        return f"fetch {self.url} -> {self.tree or self.dest / self.provides}"
 
     def installed(self) -> bool:
         landed = self.dest / self.provides
@@ -221,8 +223,26 @@ class Release(Package):
             self.dest.mkdir(parents=True, exist_ok=True)
             landed = self.dest / self.provides
             binary.chmod(0o755)
-            shutil.move(str(binary), str(landed))
-            return landed
+            if self.tree is None:
+                shutil.move(str(binary), str(landed))
+                return landed
+            return self._graft(binary, landed, self.tree)
+
+    def _graft(self, binary: Path, landed: Path, tree: Path) -> Path:
+        """Keep the whole unpacked prefix; put a symlink to it on PATH.
+
+        Some releases are a prefix, not a binary: nvim reads its runtime from
+        ../share/nvim next to the executable, so the tree has to survive.
+        """
+        root = binary.parents[1] if binary.parent.name == "bin" else binary.parent
+        inside = binary.relative_to(root)
+        if tree.is_dir():
+            shutil.rmtree(tree)
+        tree.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(root), str(tree))
+        landed.unlink(missing_ok=True)
+        landed.symlink_to(tree / inside)
+        return landed
 
 
 def github(
@@ -235,19 +255,24 @@ def github(
     member: str | None = None,
     sha256: str | None = None,
     dest: Path | None = None,
+    tree: bool = False,
 ) -> Release:
     """A release asset from github.com/<repo>, installed into ~/.local/bin.
 
         yield github("zellij-org/zellij", "v0.43.1", "zellij-{target}.tar.gz", host=host)
         yield github("jj-vcs/jj", "v0.34.0", "jj-{tag}-{target}.tar.gz", host=host)
 
-    `asset` is a format string over {name} {repo} {tag} {version} {arch} {os}
-    {target}; `member` names the binary inside the archive when it is not just
-    {name}. Anything tar, zip, gzip or a bare binary unpacks.
+    `asset` and `member` are format strings over {name} {repo} {tag} {version}
+    {arch} {os} {target}; `member` names the binary inside the archive when it
+    is not just {name}. Anything tar, zip, gzip or a bare binary unpacks.
+
+    `tree=True` is for releases that ship a prefix rather than a lone binary:
+    the unpacked tree lives in ~/.local/share/dot/{name} and ~/.local/bin/{name}
+    is a symlink into it.
     """
     name = bin or repo.split("/")[-1]
     arch = ARCHES.get(host.arch, host.arch)
-    filename = asset.format(
+    tokens = dict(
         name=name,
         repo=repo,
         tag=tag,
@@ -256,6 +281,7 @@ def github(
         os="darwin" if host.macos else host.os,
         target=f"{arch}-{TRIPLES[host.os]}",
     )
+    filename = asset.format(**tokens)
     return Release(
         manager="github",
         name=repo,
@@ -264,8 +290,9 @@ def github(
         url=f"https://github.com/{repo}/releases/download/{tag}/{filename}",
         tag=tag,
         dest=dest or host.home / ".local" / "bin",
-        member=member,
+        member=member.format(**tokens) if member else None,
         sha256=sha256,
+        tree=host.xdg_data / "dot" / name if tree else None,
     )
 
 
