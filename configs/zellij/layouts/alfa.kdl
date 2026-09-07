@@ -1,45 +1,43 @@
 layout {
-    // Chrome, declared once per layout: the builtin tab-bar still owns tabs,
-    // and zjstatus (configured in config.kdl) owns everything else.
-    pane_template name="tabbar" borderless=true {
-        plugin location="zellij:tab-bar"
-    }
-    pane_template name="statusbar" borderless=true {
-        plugin location="zjstatus"
+    // Chrome, declared once and inherited by every tab below — and by tabs
+    // opened later, since zellij falls back to this template when there is no
+    // `new_tab_template`. Tabs stay in the builtin tab-bar; zjstatus (configured
+    // in config.kdl) owns the widgets; the builtin status-bar owns the keybind
+    // menu, which is the only thing that reads the real bindings.
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        // Widgets above the menu: the menu redraws as you step through a mode,
+        // so it wants to be the line nearest the panes it is talking about.
+        pane size=1 borderless=true {
+            plugin location="zjstatus"
+        }
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
     }
 
     tab name="editor" hide_floating_panes=true focus=true {
-        tabbar size=1
         pane command="nvim" borderless=true {
             args "."
         }
-        statusbar size=1
     }
     tab name="claude" hide_floating_panes=true {
-        tabbar size=1
         pane command="claude" borderless=true {
             args "."
         }
-        statusbar size=1
     }
     tab name="jj" hide_floating_panes=true {
-        tabbar size=1
         pane command="jjui" size="60%"
         pane size="40%"
-        statusbar size=1
     }
     tab name="tests" hide_floating_panes=true {
-        tabbar size=1
         pane stacked=true {
             pane name="host" expanded=true {
             }
             pane name="docker"
         }
-        statusbar size=1
-    }
-    new_tab_template {
-        tabbar size=1
-        pane
-        statusbar size=1
     }
 }

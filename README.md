@@ -182,29 +182,43 @@ surfaces its writes as `edited` instead of quietly losing them.
 
 ## The zellij status bar
 
-[zjstatus](https://github.com/dj95/zjstatus) replaces zellij's builtin
-status bar. Tabs are not in it — the builtin `tab-bar` still runs above the
-panes and owns those.
+[zjstatus](https://github.com/dj95/zjstatus) adds a widget line. It does not
+replace zellij's builtin bars, because neither of those is redundant: only
+`tab-bar` knows the tabs, and only `status-bar` can render the keybind menu
+from the bindings actually in force. So every tab carries three rows of chrome
+— tabs on top, then the panes, then the widgets, then the menu.
 
 ```
+ Zellij (dotfiles)  editor  jj  shell  +
+…
  LOCK  dotfiles  qxknvvwl feat(zellij): custom status bar  main ↑2           17%   67%   100%  Thu 03 Sep 00:14 
+ Ctrl a  UNLOCK                                              Alt +  <n> New Pane  <f> Floating
 ```
 
-Left to right: input mode, session name, the jj working copy, then cpu,
-memory, battery and the clock.
+The widget line, left to right: input mode, session name, the jj working copy,
+then cpu, memory, battery and the clock. The menu under it steps through the
+current mode's bindings, and zellij generates it from the keybinds in
+`config.kdl`, so it cannot drift from them.
 
-The whole bar is configured once, as a plugin alias in
-`configs/zellij/templates/config.kdl.j2`. Layouts only name it:
+zjstatus itself is configured once, as a plugin alias in
+`configs/zellij/templates/config.kdl.j2`. The three rows are declared once per
+layout, in a `default_tab_template`:
 
 ```kdl
-pane_template name="statusbar" borderless=true {
-    plugin location="zjstatus"
+default_tab_template {
+    pane size=1 borderless=true { plugin location="zellij:tab-bar" }
+    children
+    pane size=1 borderless=true { plugin location="zjstatus" }
+    pane size=1 borderless=true { plugin location="zellij:status-bar" }
 }
 ```
 
-so a new layout gets the bar for free, and one edit reaches every tab of every
-layout. (`size` is not valid on a `pane_template`; it goes at the use site,
-`statusbar size=1`.)
+Tabs then declare only their own panes, and a tab opened later gets the same
+chrome: with no `new_tab_template`, zellij falls back to this one.
+
+Every tab does get its own zjstatus instance, and there is no way around that
+— zellij loads a plugin per pane, and a pane belongs to one tab. That is why
+the permissions below are seeded rather than answered.
 
 **Why that file is a template.** zjstatus runs widget commands directly, with
 no shell — so `~` never expands and `PATH` is whatever the zellij server
@@ -232,8 +246,18 @@ appear only once something else snapshots. It follows `{focused_pane_cwd}`, so
 it describes the repo you are looking at, and prints nothing outside a repo
 (`hideonemptystdout`) rather than leaving a gap.
 
-zjstatus asks for `ReadApplicationState`, `ChangeApplicationState` and
-`RunCommands` the first time it loads; the grant is cached per plugin path.
+**Permissions** are granted ahead of time rather than prompted for. zjstatus
+asks for `ReadApplicationState`, `ChangeApplicationState` and `RunCommands`
+when it loads, and zellij only consults its cache *after* a plugin has asked —
+so opening a layout on a machine with nothing cached puts a permission screen
+in every tab at once, one per status bar, before the first answer is written
+back. The plan writes those grants into the cache itself, from the table in
+`configs/zellij/module.py`, and nothing ever asks.
+
+That file belongs to zellij, which rewrites the whole of it from a hash map
+every time a grant goes through: key order moves between runs and comments do
+not survive. So the plan's `Grant` action checks what the file *says* rather
+than what it looks like, and an apply merges into it instead of replacing it.
 
 ## Scripts a shell calls
 

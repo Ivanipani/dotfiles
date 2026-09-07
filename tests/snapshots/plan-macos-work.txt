@@ -42,6 +42,8 @@ zellij	fetch	fetch https://github.com/laperlej/zellij-sessionizer/releases/downl
 zellij	fetch	fetch https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm -> $REPO/configs/zellij/plugins/zellij-switch.wasm
 zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm
 zellij	symlink	ln -s $REPO/configs/zellij/plugins $HOME/.config/zellij/plugins
+zellij	dir	mkdir -p $HOME/Library/Caches/org.Zellij-Contributors.Zellij
+zellij	grant	grant 5 plugins their permissions in $HOME/Library/Caches/org.Zellij-Contributors.Zellij/permissions.kdl
 zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.nu $HOME/scripts/sessionizer.nu

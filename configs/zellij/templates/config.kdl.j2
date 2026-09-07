@@ -215,10 +215,14 @@ keybinds clear-defaults=true {
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
 plugins {
-    // The status bar. Defined here rather than in each layout so one edit
-    // reaches every tab of every layout, including new_tab_template.
-    // Tabs are deliberately absent — `tab-bar` above the panes still owns those.
-    zjstatus location="file:~/.config/zellij/plugins/zjstatus.wasm" {
+    // The widget line. Defined here rather than in each layout so one edit
+    // reaches every tab of every layout.
+    //
+    // It is one of three chrome rows and owns only what the other two do not:
+    // `tab-bar` above the panes has the tabs, and the builtin `status-bar`
+    // below this line has the keybind menu — that one is generated from the
+    // bindings above, so it stays correct when they change.
+    zjstatus location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
         // Catppuccin Frappé, matching `theme` below. zjstatus resolves `$name`
         // against these, so the widget scripts can ask for `$red` without
         // knowing a single hex code.
@@ -307,11 +311,11 @@ plugins {
     filepicker location="zellij:strider" {
         cwd "/"
     }
-    navigator location="file:~/.config/zellij/plugins/vim-zellij-navigator.wasm"
+    navigator location="file:{{ host.xdg_config }}/zellij/plugins/vim-zellij-navigator.wasm"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
-    switcher location="file:~/.config/zellij/plugins/zellij-switch.wasm"
+    switcher location="file:{{ host.xdg_config }}/zellij/plugins/zellij-switch.wasm"
     strider location="zellij:strider"
     tab-bar location="zellij:tab-bar"
     welcome-screen location="zellij:session-manager" {
@@ -325,7 +329,7 @@ plugins {
 load_plugins {
     navigator
     switcher
-    "file:~/.config/zellij/plugins/zellij-attention.wasm" {
+    "file:{{ host.xdg_config }}/zellij/plugins/zellij-attention.wasm" {
         // All options are optional — defaults shown
         enabled "true"
         waiting_icon "⏳"
