@@ -48,6 +48,7 @@ zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.nu $HOME/scripts/sessionizer.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.zsh $HOME/scripts/sessionizer.zsh
+zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-cache.nu $HOME/scripts/zjstatus-cache.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-jj.nu $HOME/scripts/zjstatus-jj.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-sys.nu $HOME/scripts/zjstatus-sys.nu
 zsh	dir	mkdir -p $HOME/.config/zsh

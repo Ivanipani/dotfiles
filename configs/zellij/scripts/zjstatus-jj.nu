@@ -9,6 +9,17 @@
 # Read-only on purpose: `--ignore-working-copy` skips the snapshot, so a bar
 # ticking every few seconds never takes the working-copy lock or races jjui.
 # The cost is that edits show up only once something else snapshots.
+#
+# Every tab runs its own copy of this script, so the `jj log` is cached and
+# shared between them: one call per interval per directory, however many tabs
+# are open. See zjstatus-cache.nu.
+
+const CACHE = path self "zjstatus-cache.nu"
+use $CACHE [cached]
+
+# Just under the widget's `command_jj_interval`, so exactly one instance per
+# interval refreshes it.
+const TTL = 2500ms
 
 # The nearest bookmark at or below @: both the label we show and the anchor the
 # stack height is measured against, so the two always agree.
@@ -68,16 +79,16 @@ def parse_row [line: string] {
     }
 }
 
-def main [] {
+def render [] {
     let template = ($TEMPLATE | str replace "{ahead}" $AHEAD)
     let out = (jj log --ignore-working-copy --no-graph --color never --quiet -r $REVSET -T $template | complete)
-    if $out.exit_code != 0 { return }
+    if $out.exit_code != 0 { return "" }
 
     let rows = (
         $out.stdout | lines | where { |l| ($l | str trim | is-not-empty) } | each { |l| parse_row $l }
     )
     let wc = ($rows | where working_copy | get -i 0)
-    if $wc == null { return }
+    if $wc == null { return "" }
 
     # Change id: the unique prefix is what you actually type, so it carries the
     # accent and the disambiguating rest trails off dim.
@@ -122,5 +133,11 @@ def main [] {
         $flags | where { |f| $wc.marks | str contains $f.0 } | each { |f| $f.1 } | str join ""
     ))
 
-    print ($parts | str join "")
+    $parts | str join ""
+}
+
+def main [] {
+    # The widget follows `{focused_pane_cwd}`, so the directory is part of the
+    # key: two tabs sitting in different repos must not share an answer.
+    print (cached $"jj-($env.PWD | hash sha256 | str substring 0..15)" $TTL { render })
 }

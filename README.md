@@ -216,9 +216,12 @@ default_tab_template {
 Tabs then declare only their own panes, and a tab opened later gets the same
 chrome: with no `new_tab_template`, zellij falls back to this one.
 
-Every tab does get its own zjstatus instance, and there is no way around that
-— zellij loads a plugin per pane, and a pane belongs to one tab. That is why
-the permissions below are seeded rather than answered.
+Every tab does get its own zjstatus instance, and there is no way around that:
+zellij keys a plugin instance by pane (`plugin_map`, `(PluginId, ClientId)`)
+and a pane belongs to exactly one tab, so nothing in a layout can point several
+tabs at one instance. Two consequences are worth knowing about, and both are
+handled below — the permission prompts are seeded away, and the widgets share
+their work through a cache rather than each repeating it.
 
 **Why that file is a template.** zjstatus runs widget commands directly, with
 no shell — so `~` never expands and `PATH` is whatever the zellij server
@@ -239,6 +242,23 @@ here, and both print a line of zjstatus markup (`rendermode "dynamic"`):
 | --- | --- | --- |
 | `zjstatus-jj.nu` | change id, description, bookmark, distance above it, and conflict / divergent / empty / immutable flags | one `jj log` for all of it |
 | `zjstatus-sys.nu` | cpu, memory and battery as a percentage of the whole machine | `top` on macOS, `/proc/stat` deltas on Linux |
+| `zjstatus-cache.nu` | not a widget: the shared cache the other two go through | keeps the cost flat as tabs are added |
+
+**One sample per interval, not one per tab.** Since every tab runs its own
+instance, five tabs would otherwise mean five `top` samples every five seconds
+— about a third of a core, permanently, and growing with each tab. So both
+widgets go through `zjstatus-cache.nu`: the first instance to find the value
+expired recomputes it, and every instance that ticks inside that window is
+served what it wrote. The TTL sits just under each widget's interval, so
+exactly one refresh happens per interval no matter how many tabs are open.
+
+The claim on that refresh happens *before* the work rather than after: the
+recomputing instance touches the file first, so instances waking at the same
+moment see something fresh and serve the previous value instead of all
+repeating the same sample. Verified with six concurrent instances against an
+expired cache — one recomputed. The cache key carries whatever the value
+depends on, which for the jj widget is the directory, so two tabs in different
+repos never share an answer.
 
 The jj widget runs `--ignore-working-copy`: a bar ticking every few seconds
 must never take the working-copy lock or race `jjui`. The cost is that edits

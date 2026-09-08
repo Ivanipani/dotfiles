@@ -8,6 +8,17 @@
 #
 # Every number is normalised to 0-100 across the whole system, so a value means
 # the same thing on an 8-core laptop as on a 64-core box.
+#
+# The `top` sample below is the expensive part of the whole bar, so the answer
+# is cached: every tab runs its own copy of this script, and they share one
+# sample per interval. See zjstatus-cache.nu.
+
+const CACHE = path self "zjstatus-cache.nu"
+use $CACHE [cached]
+
+# Just under the widget's `command_sys_interval`, so exactly one instance per
+# interval refreshes it.
+const TTL = 4500ms
 
 # nf-fa glyphs; the terminal font is already a Nerd Font for zellij's separators.
 const CPU_ICON = "\u{f2db}"
@@ -107,7 +118,7 @@ def render_battery [] {
     $"#[fg=$overlay0] ($icon) #[fg=($color)]($b.percent)%"
 }
 
-def main [] {
+def render [] {
     let cpu = (try { cpu_percent } catch { null })
     let mem = (try { mem_percent } catch { null })
 
@@ -116,5 +127,9 @@ def main [] {
     if $mem != null { $parts = ($parts | append (gauge $MEM_ICON $mem)) }
     $parts = ($parts | append (render_battery))
 
-    print ($parts | where { |p| $p != "" } | str join "#[fg=$surface2]  ")
+    $parts | where { |p| $p != "" } | str join "#[fg=$surface2]  "
+}
+
+def main [] {
+    print (cached "sys" $TTL { render })
 }
