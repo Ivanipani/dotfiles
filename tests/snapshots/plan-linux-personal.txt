@@ -26,16 +26,14 @@ zellij	render	render config.kdl.j2 -> $HOME/.config/zellij/config.kdl (symlink)
 zellij	symlink	ln -s $REPO/configs/zellij/layouts $HOME/.config/zellij/layouts
 zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
 zellij	fetch	fetch https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm -> $REPO/configs/zellij/plugins/zellij-attention.wasm
-zellij	fetch	fetch https://github.com/laperlej/zellij-sessionizer/releases/download/v0.4.3/zellij-sessionizer.wasm -> $REPO/configs/zellij/plugins/zellij-sessionizer.wasm
-zellij	fetch	fetch https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm -> $REPO/configs/zellij/plugins/zellij-switch.wasm
 zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm
+zellij	run	cargo build zellij-sessionizer (wasm32-wasip1)
+zellij	symlink	ln -s $REPO/src/zellij-sessionizer/target/wasm32-wasip1/release/zellij_sessionizer.wasm $REPO/configs/zellij/plugins/zellij-sessionizer.wasm
 zellij	symlink	ln -s $REPO/configs/zellij/plugins $HOME/.config/zellij/plugins
 zellij	dir	mkdir -p $HOME/.cache/zellij
-zellij	grant	grant 5 plugins their permissions in $HOME/.cache/zellij/permissions.kdl
+zellij	grant	grant 4 plugins their permissions in $HOME/.cache/zellij/permissions.kdl
 zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
-zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.nu $HOME/scripts/sessionizer.nu
-zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer.zsh $HOME/scripts/sessionizer.zsh
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-cache.nu $HOME/scripts/zjstatus-cache.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-jj.nu $HOME/scripts/zjstatus-jj.nu
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-sys.nu $HOME/scripts/zjstatus-sys.nu

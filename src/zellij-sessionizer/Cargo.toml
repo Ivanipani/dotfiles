@@ -1,0 +1,14 @@
+[package]
+name = "zellij-sessionizer"
+version = "0.1.0"
+edition = "2021"
+description = "Native zellij plugin: fuzzy-find project directories, switch sessions, create sessions with a layout."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pin to the zellij version this repo installs (see configs/zellij/module.py) —
+# the plugin ABI is not guaranteed compatible across zellij releases.
+zellij-tile = "0.45.1"
+fuzzy-matcher = "0.3"

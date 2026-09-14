@@ -135,6 +135,13 @@ keybinds clear-defaults=true {
         //     SwitchToMode "locked"
         // }
         bind "d" { Detach; }
+        bind "f" {
+            LaunchOrFocusPlugin "sessionizer" {
+                floating true
+                move_to_focused_tab true
+            }
+            SwitchToMode "locked"
+        }
         bind "o" { SwitchToMode "normal"; }
         bind "p" {
             LaunchOrFocusPlugin "plugin-manager" {
@@ -314,8 +321,12 @@ plugins {
     navigator location="file:{{ host.xdg_config }}/zellij/plugins/vim-zellij-navigator.wasm"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
+    sessionizer location="file:{{ host.xdg_config }}/zellij/plugins/zellij-sessionizer.wasm" {
+        roots "{{ home }}/github:{{ home }}"
+        dirs "{{ home }}/dotfiles"
+        layout_dir "{{ host.xdg_config }}/zellij/layouts"
+    }
     status-bar location="zellij:status-bar"
-    switcher location="file:{{ host.xdg_config }}/zellij/plugins/zellij-switch.wasm"
     strider location="zellij:strider"
     tab-bar location="zellij:tab-bar"
     welcome-screen location="zellij:session-manager" {
@@ -328,7 +339,6 @@ plugins {
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
     navigator
-    switcher
     "file:{{ host.xdg_config }}/zellij/plugins/zellij-attention.wasm" {
         // All options are optional — defaults shown
         enabled "true"

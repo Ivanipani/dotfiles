@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dot import Action, Dir, Drift, Fetch, Module, Render, Status, Symlink, cargo
+from dot import Action, Dir, Drift, Fetch, Module, Render, Run, Status, Symlink, cargo
 
 # name, url, sha256, permissions the plugin asks for on load.
 #
@@ -27,22 +27,21 @@ PLUGINS = (
         ),
     ),
     (
-        "zellij-sessionizer",
-        "https://github.com/laperlej/zellij-sessionizer/releases/download/v0.4.3/zellij-sessionizer.wasm",
-        "006b966ee457ed88bdb4f7594f30ca50b5e1dd72d4b389dabee89e0a29948334",
-        ("ReadApplicationState", "ChangeApplicationState", "RunCommands"),
-    ),
-    (
-        "zellij-switch",
-        "https://github.com/mostafaqanbaryan/zellij-switch/releases/download/0.2.1/zellij-switch.wasm",
-        "ef257e41ffeb73337ed1dead309942d14663d12d8f58170f0cdab5045b0a22ae",
-        ("ReadApplicationState", "ChangeApplicationState"),
-    ),
-    (
         "zjstatus",
         "https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm",
         "282ceab219e56e1908c9fac33907241fe6c3e1ef7d85faab3e5f438cef87b8fe",
         ("ReadApplicationState", "ChangeApplicationState", "RunCommands"),
+    ),
+)
+
+# Our own plugin (src/zellij-sessionizer): built from source rather than
+# fetched, so it carries no url/checksum — just the permissions it asks for.
+# It replaces laperlej/zellij-sessionizer and mostafaqanbaryan/zellij-switch,
+# doing both jobs (and the fuzzy-finding fzf/fd used to do) natively.
+LOCAL_PLUGINS = (
+    (
+        "zellij-sessionizer",
+        ("ReadApplicationState", "ChangeApplicationState", "FullHdAccess"),
     ),
 )
 
@@ -145,7 +144,7 @@ class Zellij(Module):
     requires = ("zellij", "nu")
 
     def packages(self, host):
-        yield cargo("zellij", locked=True, version="0.45.0")
+        yield cargo("zellij", locked=True, version="0.45.1")
 
     def plan(self, host):
         cfg = host.xdg_config / "zellij"
@@ -155,6 +154,22 @@ class Zellij(Module):
         # Checksums pin the exact plugin builds that are known to work here.
         for name, url, digest, _ in PLUGINS:
             yield Fetch(url, self.path("plugins", f"{name}.wasm"), digest)
+
+        # Local plugins are built rather than fetched. `unless` makes this a
+        # one-time build rather than a rebuild-on-every-apply: cargo's own
+        # incremental cache does the rest during development. Requires the
+        # wasm32-wasip1 rustup target (`rustup target add wasm32-wasip1`).
+        crate_dir = host.repo / "src" / "zellij-sessionizer"
+        built_wasm = crate_dir / "target" / "wasm32-wasip1" / "release" / "zellij_sessionizer.wasm"
+        yield Run(
+            ("cargo", "build", "--release", "--target", "wasm32-wasip1"),
+            unless=built_wasm,
+            cwd=crate_dir,
+            desc="cargo build zellij-sessionizer (wasm32-wasip1)",
+        )
+        for name, _ in LOCAL_PLUGINS:
+            yield Symlink(built_wasm, self.path("plugins", f"{name}.wasm"))
+
         yield Symlink(self.path("plugins"), cfg / "plugins")
 
         cache = cache_dir(host)
@@ -163,7 +178,8 @@ class Zellij(Module):
             cache / "permissions.kdl",
             # Keyed by the path zellij resolves the plugin to, which is the
             # `location` in config.kdl with `file:` stripped.
-            {str(cfg / "plugins" / f"{name}.wasm"): perms for name, _, _, perms in PLUGINS},
+            {str(cfg / "plugins" / f"{name}.wasm"): perms for name, _, _, perms in PLUGINS}
+            | {str(cfg / "plugins" / f"{name}.wasm"): perms for name, perms in LOCAL_PLUGINS},
         )
 
         # On PATH rather than referenced by repo path: shells call these by
