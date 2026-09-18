@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Native zellij plugin: fuzzy-find project directories, switch sessions, create sessions with a layout."
 
-[lib]
-crate-type = ["cdylib"]
+[[bin]]
+name = "zellij_sessionizer"
+path = "src/main.rs"
 
 [dependencies]
 # Pin to the zellij version this repo installs (see configs/zellij/module.py) —
