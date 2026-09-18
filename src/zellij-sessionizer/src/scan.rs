@@ -1,5 +1,5 @@
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeSet, VecDeque};
+use std::path::{Component, Path, PathBuf};
 
 use crate::config::Config;
 
@@ -16,8 +16,37 @@ pub fn scan(config: &Config) -> Vec<Candidate> {
     scan_at(config, Path::new("/host"))
 }
 
-fn mounted_path(mount: &Path, host: &Path) -> PathBuf {
-    mount.join(host.strip_prefix("/").unwrap_or(host))
+fn mounted_path(mount: &Path, host: &Path) -> std::io::Result<PathBuf> {
+    let mut pending: VecDeque<_> = host.components().map(|c| c.as_os_str().to_owned()).collect();
+    let mut resolved = mount.to_path_buf();
+    let mut links = 0;
+    while let Some(part) = pending.pop_front() {
+        match Path::new(&part).components().next() {
+            Some(Component::RootDir) => resolved = mount.to_path_buf(),
+            Some(Component::ParentDir) => {
+                if resolved != mount {
+                    resolved.pop();
+                }
+            }
+            Some(Component::Normal(_)) => {
+                resolved.push(&part);
+                // Resolve host symlinks ourselves: WASI cannot follow absolute targets.
+                if std::fs::symlink_metadata(&resolved)?.file_type().is_symlink() {
+                    links += 1;
+                    if links > 40 {
+                        return Err(std::io::Error::other("too many symbolic links"));
+                    }
+                    let target = std::fs::read_link(&resolved)?;
+                    resolved.pop();
+                    for component in target.components().rev() {
+                        pending.push_front(component.as_os_str().to_owned());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(resolved)
 }
 
 fn host_path(mount: &Path, guest: &Path) -> PathBuf {
@@ -29,14 +58,14 @@ fn scan_at(config: &Config, mount: &Path) -> Vec<Candidate> {
     let mut paths = Vec::new();
 
     for dir in &config.dirs {
-        let path = mounted_path(mount, Path::new(dir));
+        let Ok(path) = mounted_path(mount, Path::new(dir)) else { continue };
         if path.is_dir() && seen.insert(path.clone()) {
             paths.push(path);
         }
     }
 
     for root in &config.roots {
-        let root_path = mounted_path(mount, Path::new(root));
+        let Ok(root_path) = mounted_path(mount, Path::new(root)) else { continue };
         if !root_path.is_dir() {
             continue;
         }
@@ -130,10 +159,10 @@ fn scan_layouts_at(layout_dir: &str, mount: &Path) -> Vec<LayoutOption> {
         return options;
     }
 
-    let mut found: Vec<PathBuf> = match std::fs::read_dir(mounted_path(mount, Path::new(layout_dir))) {
+    let mut found: Vec<PathBuf> = match mounted_path(mount, Path::new(layout_dir)).and_then(std::fs::read_dir) {
         Ok(entries) => entries
             .flatten()
-            .map(|entry| entry.path())
+            .filter_map(|entry| mounted_path(mount, &host_path(mount, &entry.path())).ok())
             .filter(|path| path.is_file())
             .filter(|path| {
                 matches!(
@@ -184,6 +213,30 @@ mod tests {
         assert!(layouts[0].path.is_none());
         assert_eq!(layouts[1].name, "work");
         assert_eq!(layouts[1].path.as_deref(), Some("/users/dev/layouts/work.kdl"));
+        std::fs::remove_dir_all(mount).unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod symlink_tests {
+    use super::*;
+
+    #[test]
+    fn discovers_layouts_through_absolute_host_symlinks() {
+        let mount = std::env::temp_dir().join(format!("sessionizer-links-{}", std::process::id()));
+        let target = mount.join("users/dev/dotfiles/layouts");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(mount.join("users/dev/.config")).unwrap();
+        std::fs::write(target.join("alfa.kdl"), "layout {}").unwrap();
+        std::os::unix::fs::symlink("/users/dev/dotfiles/layouts", mount.join("users/dev/.config/layouts")).unwrap();
+        let layouts = scan_layouts_at("/users/dev/.config/layouts", &mount);
+        assert_eq!(layouts.len(), 2);
+        assert_eq!(layouts[1].name, "alfa");
+        assert_eq!(layouts[1].path.as_deref(), Some("/users/dev/dotfiles/layouts/alfa.kdl"));
+        std::os::unix::fs::symlink("layouts", mount.join("users/dev/.config/relative")).unwrap();
+        assert_eq!(scan_layouts_at("/users/dev/.config/relative", &mount).len(), 2);
+        std::os::unix::fs::symlink("loop", mount.join("users/dev/.config/loop")).unwrap();
+        assert!(mounted_path(&mount, Path::new("/users/dev/.config/loop")).is_err());
         std::fs::remove_dir_all(mount).unwrap();
     }
 }
