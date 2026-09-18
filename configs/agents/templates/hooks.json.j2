@@ -1,0 +1,72 @@
+{
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/jj-context.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/jj-guard.sh\""
+          }
+        ]
+      }
+    ],
+{% if client == "claude" %}
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/attention.sh\" waiting"
+          }
+        ]
+      },
+      {
+        "matcher": "agent_completed",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/attention.sh\" completed"
+          }
+        ]
+      },
+      {
+        "matcher": "permission_prompt|idle_prompt|agent_needs_input|agent_completed|elicitation_dialog|elicitation_url_dialog|quota_auto_resume_fired|quota_auto_resume_stale",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/notify.sh\""
+          }
+        ]
+      }
+    ],
+{% else %}
+    "PermissionRequest": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}]}],
+{% endif %}
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": {% if client == "codex" %}"\"$HOME/.codex/hooks/notify.sh\" Codex"{% else %}"\"$HOME/.claude/hooks/attention.sh\" completed"{% endif %}
+          },
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/jj-commit.sh\""
+          }
+        ]
+      }
+    ]
+  }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SessionStart hook: stdout from this event becomes context Claude can see, so
+# SessionStart hook: stdout from this event becomes context the agent can see, so
 # hand it the jj state up front instead of paying for it in tool calls later.
 set -eu
 

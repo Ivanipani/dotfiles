@@ -65,7 +65,7 @@ def test_linux_drops_the_gui_only_module(repo, modules, tmp_path):
     linux = make_host(repo, tmp_path / "l", os_name="linux")
     names = {i.module for i in reconcile.build(modules, linux)}
     assert "term" not in names
-    assert {"zsh", "nvim", "vcs", "zellij", "nushell", "claude"} <= names
+    assert {"zsh", "nvim", "vcs", "zellij", "nushell", "claude", "codex"} <= names
 
 
 def test_module_ordering_puts_zsh_last(modules):

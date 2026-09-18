@@ -6,7 +6,7 @@ class Zsh(Module):
     requires = ("zsh", "starship", "atuin")
     # Nothing depends on zsh, but its fragments reference tools the other
     # modules put in place, so it reads better applied last.
-    after = ("claude", "nushell", "nvim", "term", "tools", "vcs", "zellij")
+    after = ("claude", "codex", "nushell", "nvim", "term", "tools", "vcs", "zellij")
 
     def packages(self, host):
         if host.macos:

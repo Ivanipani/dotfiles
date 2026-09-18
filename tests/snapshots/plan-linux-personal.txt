@@ -1,9 +1,15 @@
 claude	dir	mkdir -p $HOME/.claude
-claude	symlink	ln -s $REPO/configs/claude/CLAUDE.md $HOME/.claude/CLAUDE.md
-claude	symlink	ln -s $REPO/configs/claude/skills $HOME/.claude/skills
-claude	symlink	ln -s $REPO/configs/claude/agents $HOME/.claude/agents
-claude	symlink	ln -s $REPO/configs/claude/hooks $HOME/.claude/hooks
+claude	symlink	ln -s $REPO/configs/agents/AGENTS.md $HOME/.claude/CLAUDE.md
+claude	symlink	ln -s $REPO/configs/agents/hooks $HOME/.claude/hooks
+claude	symlink	ln -s $REPO/configs/agents/skills $HOME/.claude/skills
+claude	symlink	ln -s $REPO/configs/agents/agents $HOME/.claude/agents
 claude	render	render settings.json.j2 -> $HOME/.claude/settings.json (copy)
+codex	dir	mkdir -p $HOME/.codex
+codex	symlink	ln -s $REPO/configs/agents/AGENTS.md $HOME/.codex/AGENTS.md
+codex	symlink	ln -s $REPO/configs/agents/hooks $HOME/.codex/hooks
+codex	dir	mkdir -p $HOME/.agents
+codex	symlink	ln -s $REPO/configs/agents/skills $HOME/.agents/skills
+codex	render	render codex-hooks.json.j2 -> $HOME/.codex/hooks.json (symlink)
 nushell	dir	mkdir -p $HOME/.config/nushell
 nushell	dir	mkdir -p $HOME/.config/nushell/scripts
 nushell	dir	mkdir -p $HOME/.config/nushell/lib

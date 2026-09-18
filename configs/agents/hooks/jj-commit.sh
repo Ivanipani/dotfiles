@@ -1,6 +1,6 @@
 #!/bin/sh
 # Stop hook: when work is finished and the jj working copy still holds changes,
-# send Claude back in to record them as a single conventional commit.
+# send the agent back in to record them as a single conventional commit.
 set -eu
 
 input=$(cat)

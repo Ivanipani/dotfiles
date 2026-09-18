@@ -15,6 +15,36 @@ The front end is [Typer](https://typer.tiangolo.com) for the command surface,
 module.plan(host) -> [Action]  ->  reconcile(actions, state, disk)  ->  status | diff | apply
 ```
 
+## Shared coding-agent configuration
+
+`configs/agents/` owns the shared `AGENTS.md`, skills, and hook scripts.
+The `claude` and `codex` modules use the existing `Symlink` and `Render`
+actions, so they can be planned and applied together or independently:
+
+```sh
+dot plan claude codex
+dot apply claude codex
+```
+
+- `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` link to the same `AGENTS.md`.
+- `~/.claude/skills` and `~/.agents/skills` link to the same skills directory.
+- Both clients' `hooks/` directories link to the same scripts.
+- Claude's `settings.json` and Codex's `hooks.json` render hook registrations
+  from one template. Claude settings retain copy-mode protection for local edits;
+  Codex's existing `config.toml` stays locally managed.
+- Claude's subagent definitions remain installed only for Claude.
+
+The jj context, command guard, and commit reminder run in both clients.
+Codex maps permission requests, subagent completion, and turn completion to
+shared desktop notifications and Zellij attention updates. Claude retains its
+additional notification events (including idle and quota notifications).
+See the [Codex hook reference](https://learn.chatgpt.com/docs/hooks) for event
+coverage. After applying, review and trust the Codex hooks with `/hooks`.
+
+Existing Claude links are repointed by `dot apply claude`; locally edited
+settings are reported for review using the usual `dot diff` / `--force` workflow.
+The `claude.auto_mode` local variable remains unchanged.
+
 ## Quick start
 
 Only `uv` is required. Everything else bootstraps from it.
@@ -158,7 +188,7 @@ in a host/local file.
 `local.toml` is load-bearing, not just for secrets: **this repo is public**, so
 anything that names internal hosts or paths goes there. `claude.auto_mode` is
 the worked example — Claude Code generates that block from whatever repo it was
-pointed at, and `configs/claude/templates/settings.json.j2` renders it back out
+pointed at, and `configs/agents/templates/settings.json.j2` renders it back out
 of local vars, so the committed template stays free of it.
 
 ## Symlinked vs rendered
