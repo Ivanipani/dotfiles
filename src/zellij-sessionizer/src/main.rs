@@ -40,6 +40,7 @@ struct State {
     current_session: Option<String>,
 
     permissions_granted: bool,
+    host_ready: bool,
     error: Option<String>,
 }
 
@@ -48,10 +49,9 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: std::collections::BTreeMap<String, String>) {
         self.config = Config::from_map(&configuration);
-        self.layouts = scan_layouts(&self.config.layout_dir);
 
         set_selectable(true);
-        subscribe(&[EventType::Key, EventType::PermissionRequestResult, EventType::Visible]);
+        subscribe(&[EventType::Key, EventType::PermissionRequestResult, EventType::Visible, EventType::HostFolderChanged, EventType::FailedToChangeHostFolder]);
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
@@ -64,20 +64,29 @@ impl ZellijPlugin for State {
             Event::PermissionRequestResult(status) => {
                 self.permissions_granted = matches!(status, PermissionStatus::Granted);
                 if self.permissions_granted {
-                    self.rescan();
-                    self.refresh_sessions();
+                    change_host_folder(PathBuf::from("/"));
                 } else {
                     self.error = Some("Permissions denied — cannot list directories or sessions.".to_string());
                 }
                 true
             }
+            Event::HostFolderChanged(path) if path == PathBuf::from("/") => {
+                self.host_ready = true;
+                self.rescan();
+                self.refresh_sessions();
+                true
+            }
+            Event::FailedToChangeHostFolder(error) => {
+                self.error = Some(error.unwrap_or_else(|| "Cannot access host filesystem".into()));
+                true
+            }
             Event::Visible(true) => {
-                if self.permissions_granted {
+                if self.host_ready {
                     self.refresh_sessions();
                 }
                 true
             }
-            Event::Key(key) => self.handle_key(key),
+            Event::Key(key) if self.host_ready || matches!(key.bare_key, BareKey::Esc) => self.handle_key(key),
             _ => false,
         }
     }
@@ -95,6 +104,10 @@ impl ZellijPlugin for State {
 
 impl State {
     fn rescan(&mut self) {
+        if !self.host_ready {
+            return;
+        }
+        self.layouts = scan_layouts(&self.config.layout_dir);
         self.candidates = scan(&self.config);
         self.refilter();
     }
@@ -254,6 +267,10 @@ impl State {
         }
         if !self.permissions_granted {
             println!("{}waiting for permissions…{}", ui::DIM, ui::RESET);
+            return;
+        }
+        if !self.host_ready {
+            println!("{}waiting for host filesystem…{}", ui::DIM, ui::RESET);
             return;
         }
         if self.candidates.is_empty() {

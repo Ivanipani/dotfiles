@@ -13,18 +13,30 @@ pub struct Candidate {
 /// project directories, mirroring `select_project_directory` /
 /// `PROJECT_ROOTS` / `PROJECT_DIRS` from sessionizer-david.zsh.
 pub fn scan(config: &Config) -> Vec<Candidate> {
+    scan_at(config, Path::new("/host"))
+}
+
+fn mounted_path(mount: &Path, host: &Path) -> PathBuf {
+    mount.join(host.strip_prefix("/").unwrap_or(host))
+}
+
+fn host_path(mount: &Path, guest: &Path) -> PathBuf {
+    Path::new("/").join(guest.strip_prefix(mount).expect("path outside host mount"))
+}
+
+fn scan_at(config: &Config, mount: &Path) -> Vec<Candidate> {
     let mut seen = BTreeSet::new();
     let mut paths = Vec::new();
 
     for dir in &config.dirs {
-        let path = PathBuf::from(dir);
+        let path = mounted_path(mount, Path::new(dir));
         if path.is_dir() && seen.insert(path.clone()) {
             paths.push(path);
         }
     }
 
     for root in &config.roots {
-        let root_path = PathBuf::from(root);
+        let root_path = mounted_path(mount, Path::new(root));
         if !root_path.is_dir() {
             continue;
         }
@@ -35,7 +47,7 @@ pub fn scan(config: &Config) -> Vec<Candidate> {
         .into_iter()
         .map(|path| Candidate {
             session_name: session_name_for(&path),
-            display: path.display().to_string(),
+            display: host_path(mount, &path).display().to_string(),
         })
         .collect()
 }
@@ -109,12 +121,16 @@ pub struct LayoutOption {
 /// Ports `select_zellij_layout`: every `.kdl`/`.yaml`/`.yml` file directly
 /// under `layout_dir`, named by its stem, with "No layout" pinned first.
 pub fn scan_layouts(layout_dir: &str) -> Vec<LayoutOption> {
+    scan_layouts_at(layout_dir, Path::new("/host"))
+}
+
+fn scan_layouts_at(layout_dir: &str, mount: &Path) -> Vec<LayoutOption> {
     let mut options = vec![LayoutOption { name: "No layout".to_string(), path: None }];
     if layout_dir.is_empty() {
         return options;
     }
 
-    let mut found: Vec<PathBuf> = match std::fs::read_dir(layout_dir) {
+    let mut found: Vec<PathBuf> = match std::fs::read_dir(mounted_path(mount, Path::new(layout_dir))) {
         Ok(entries) => entries
             .flatten()
             .map(|entry| entry.path())
@@ -132,7 +148,42 @@ pub fn scan_layouts(layout_dir: &str) -> Vec<LayoutOption> {
 
     for path in found {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
-        options.push(LayoutOption { name, path: Some(path.display().to_string()) });
+        options.push(LayoutOption { name, path: Some(host_path(mount, &path).display().to_string()) });
     }
     options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scans_mounted_projects_and_layouts_but_returns_host_paths() {
+        let mount = std::env::temp_dir().join(format!("sessionizer-scan-{}", std::process::id()));
+        for dir in ["users/dev/projects/repo/default/.jj", "users/dev/projects/repo/topic",
+                    "users/dev/projects/node_modules/ignored", "users/dev/dotfiles", "users/dev/layouts"] {
+            std::fs::create_dir_all(mount.join(dir)).unwrap();
+        }
+        std::fs::write(mount.join("users/dev/layouts/work.kdl"), "layout {}").unwrap();
+        let config = Config {
+            roots: vec!["/users/dev/projects".into()],
+            dirs: vec!["/users/dev/dotfiles".into()],
+            ..Config::default()
+        };
+        let candidates = scan_at(&config, &mount);
+        let mut actual: Vec<_> = candidates.iter().map(|c| (c.display.as_str(), c.session_name.as_str())).collect();
+        actual.sort();
+        assert_eq!(actual, vec![
+            ("/users/dev/dotfiles", "dotfiles"),
+            ("/users/dev/projects/repo", "repo"),
+            ("/users/dev/projects/repo/default", "repo--default"),
+            ("/users/dev/projects/repo/topic", "repo--topic"),
+        ]);
+        let layouts = scan_layouts_at("/users/dev/layouts", &mount);
+        assert_eq!(layouts.len(), 2);
+        assert!(layouts[0].path.is_none());
+        assert_eq!(layouts[1].name, "work");
+        assert_eq!(layouts[1].path.as_deref(), Some("/users/dev/layouts/work.kdl"));
+        std::fs::remove_dir_all(mount).unwrap();
+    }
 }
