@@ -314,13 +314,13 @@ plugins {
 {{ palette() }}
         format_left "{mode}"
         format_center ""
-        format_right "#[fg=$overlay2] Ctrl h/j/k/l Focus · Alt h/l Tabs "
+        format_right ""
         format_space ""
         format_precedence "lrc"
         format_hide_on_overlength "true"
         border_enabled "false"
 {% macro hint(key, label) -%}
-#[fg=$blue,bold]{{ key }}#[fg=$text] {{ label }}{{ '  ' }}
+#[bg=$surface1,fg=$blue,bold] {{ key }} #[bg=$surface0,fg=$text] {{ label }} #[default] 
 {%- endmacro %}
 {% set lock = hint('Enter/Esc/Ctrl a', 'Lock') + hint('Ctrl q', 'Quit') %}
 {% set modes = {
@@ -335,8 +335,8 @@ plugins {
     'prompt': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
     'tmux': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')]
 } %}
-{% set quick = hint('Alt n', 'New pane') + hint('Alt f', 'Floating') + hint('Alt +/-/=', 'Resize') + hint('Alt [/]', 'Layout') + hint('Alt i/o', 'Move tab') + hint('Alt p', 'Group pane') + hint('Alt Shift p', 'Mark group') %}
-        mode_locked "{{ hint('Ctrl a', 'Unlock') }}{{ quick }}"
+{% set quick = hint('Ctrl h/j/k/l', 'Focus') + hint('Alt h/l', 'Tabs') + hint('Alt n', 'New pane') + hint('Alt f', 'Floating') + hint('Alt +/-/=', 'Resize') + hint('Alt [/]', 'Layout') + hint('Alt i/o', 'Move tab') + hint('Alt p', 'Group pane') + hint('Alt Shift p', 'Mark group') %}
+        mode_locked "{{ hint('Ctrl a', 'Unlock') }}"
 {% for mode, bindings in modes.items() %}
         mode_{{ mode }} "{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{{ lock }}{% if mode == 'normal' %}{{ quick }}{% endif %}"
 {% endfor %}
