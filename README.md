@@ -221,8 +221,8 @@ to pick up a layout change.
 
 The `zjkeys` alias uses zjstatus's mode widget to show the actions for the
 current mode. Session mode starts with `f Sessionizer`; rename and search
-input modes show their own finish/cancel keys. Locked mode, the resting state, shows only `Ctrl a Unlock`; focus, tab and
-quick-action hints appear in normal mode. Keys are blue ribbons and labels use
+input modes show their own finish/cancel keys. Locked mode, the resting state, shows only `Ctrl a Unlock`; normal mode lists only the
+modes to enter (pane, tab, resize, ...). Keys are blue ribbons and labels use
 the shared Catppuccin Frappé palette. Very long mode menus can still clip
 on narrow terminals; the primary actions come first.
 

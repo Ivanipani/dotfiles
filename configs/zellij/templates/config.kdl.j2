@@ -335,10 +335,9 @@ plugins {
     'prompt': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
     'tmux': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')]
 } %}
-{% set quick = hint('Ctrl h/j/k/l', 'Focus') + hint('Alt h/l', 'Tabs') + hint('Alt n', 'New pane') + hint('Alt f', 'Floating') + hint('Alt +/-/=', 'Resize') + hint('Alt [/]', 'Layout') + hint('Alt i/o', 'Move tab') + hint('Alt p', 'Group pane') + hint('Alt Shift p', 'Mark group') %}
         mode_locked "{{ hint('Ctrl a', 'Unlock') }}"
 {% for mode, bindings in modes.items() %}
-        mode_{{ mode }} "{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{{ lock }}{% if mode == 'normal' %}{{ quick }}{% endif %}"
+        mode_{{ mode }} "{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{{ lock }}"
 {% endfor %}
         mode_enter_search "{{ hint('Type', 'Search') }}{{ hint('Enter', 'Find') }}{{ hint('Esc/Ctrl c', 'Scroll') }}{{ hint('Ctrl a', 'Lock') }}{{ hint('Ctrl q', 'Quit') }}"
 {% for mode, target in [('rename_tab', 'Tab'), ('rename_pane', 'Pane')] %}
