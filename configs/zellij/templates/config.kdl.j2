@@ -1,3 +1,26 @@
+{% macro palette() -%}
+        color_base     "#303446"
+        color_surface0 "#414559"
+        color_surface1 "#51576d"
+        color_surface2 "#626880"
+        color_overlay0 "#737994"
+        color_overlay1 "#838ba7"
+        color_overlay2 "#949cbb"
+        color_subtext0 "#a5adce"
+        color_text     "#c6d0f5"
+        color_red      "#e78284"
+        color_peach    "#ef9f76"
+        color_yellow   "#e5c890"
+        color_green    "#a6d189"
+        color_teal     "#81c8be"
+        color_sky      "#99d1db"
+        color_sapphire "#85c1dc"
+        color_blue     "#8caaee"
+        color_lavender "#babbf1"
+        color_mauve    "#ca9ee6"
+        color_pink     "#f4b8e4"
+        color_flamingo "#eebebe"
+{%- endmacro %}
 {% set nu = which("nu") or "nu" %}
 {# The status bar runs its widgets with no shell, so PATH has to be spelled out
    rather than picked up from a profile. The shell's own list first, then the
@@ -222,38 +245,12 @@ keybinds clear-defaults=true {
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
 plugins {
-    // The widget line. Defined here rather than in each layout so one edit
-    // reaches every tab of every layout.
-    //
-    // It is one of three chrome rows and owns only what the other two do not:
-    // `tab-bar` above the panes has the tabs, and the builtin `status-bar`
-    // below this line has the keybind menu — that one is generated from the
-    // bindings above, so it stays correct when they change.
+    // Widgets and key hints share the palette and the same zjstatus binary.
     zjstatus location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
         // Catppuccin Frappé, matching `theme` below. zjstatus resolves `$name`
         // against these, so the widget scripts can ask for `$red` without
         // knowing a single hex code.
-        color_base     "#303446"
-        color_surface0 "#414559"
-        color_surface1 "#51576d"
-        color_surface2 "#626880"
-        color_overlay0 "#737994"
-        color_overlay1 "#838ba7"
-        color_overlay2 "#949cbb"
-        color_subtext0 "#a5adce"
-        color_text     "#c6d0f5"
-        color_red      "#e78284"
-        color_peach    "#ef9f76"
-        color_yellow   "#e5c890"
-        color_green    "#a6d189"
-        color_teal     "#81c8be"
-        color_sky      "#99d1db"
-        color_sapphire "#85c1dc"
-        color_blue     "#8caaee"
-        color_lavender "#babbf1"
-        color_mauve    "#ca9ee6"
-        color_pink     "#f4b8e4"
-        color_flamingo "#eebebe"
+{{ palette() }}
 
         // Only the mode and the clock get a background; everything between them
         // sits on the terminal's own, so the bar reads as part of the pane.
@@ -312,6 +309,42 @@ plugins {
         command_sys_interval "5"
         command_sys_rendermode "dynamic"
     }
+    // Mode hints mirror the bindings above; update both when changing a shortcut.
+    zjkeys location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
+{{ palette() }}
+        format_left "{mode}"
+        format_center ""
+        format_right "#[fg=$overlay2] Ctrl h/j/k/l Focus · Alt h/l Tabs "
+        format_space ""
+        format_precedence "lrc"
+        format_hide_on_overlength "true"
+        border_enabled "false"
+{% macro hint(key, label) -%}
+#[fg=$blue,bold]{{ key }}#[fg=$text] {{ label }}{{ '  ' }}
+{%- endmacro %}
+{% set lock = hint('Enter/Esc/Ctrl a', 'Lock') + hint('Ctrl q', 'Quit') %}
+{% set modes = {
+    'normal': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
+    'pane': [('h/j/k/l', 'New ←↓↑→'), ('s', 'Stack'), ('d', 'Close'), ('r', 'Rename'), ('f', 'Fullscreen'), ('w', 'Floating'), ('e', 'Embed/float'), ('i', 'Pin'), ('p', 'Back'), ('t', 'Tab'), ('m', 'Move'), ('o', 'Session')],
+    'tab': [('n', 'New'), ('h/l', 'Previous/next'), ('b', 'Break pane'), ('r', 'Rename'), ('s', 'Sync'), ('d', 'Close'), ('t', 'Back'), ('p', 'Pane'), ('m', 'Move'), ('o', 'Session')],
+    'resize': [('h/j/k/l', 'Grow ←↓↑→'), ('H/J/K/L', 'Shrink ←↓↑→'), ('r', 'Back'), ('p', 'Pane'), ('t', 'Tab'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
+    'move': [('h/j/k/l', 'Move ←↓↑→'), ('m', 'Back'), ('t', 'Tab'), ('r', 'Resize'), ('s', 'Scroll'), ('o', 'Session')],
+    'scroll': [('j/k', 'Down/up'), ('Ctrl d/u', 'Half page'), ('/', 'Search'), ('e', 'Edit'), ('s', 'Back'), ('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('o', 'Session')],
+    'search': [('n/N', 'Next/previous'), ('c', 'Case'), ('o', 'Whole word'), ('w', 'Wrap'), ('s', 'Scroll'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move')],
+    'session': [('f', 'Sessionizer'), ('m', 'Manager'), ('d', 'Detach'), ('p', 'Plugins'), ('s', 'Share'), ('a', 'About'), ('o', 'Back'), ('t', 'Tab'), ('r', 'Resize')],
+    'prompt': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
+    'tmux': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')]
+} %}
+{% set quick = hint('Alt n', 'New pane') + hint('Alt f', 'Floating') + hint('Alt +/-/=', 'Resize') + hint('Alt [/]', 'Layout') + hint('Alt i/o', 'Move tab') + hint('Alt p', 'Group pane') + hint('Alt Shift p', 'Mark group') %}
+        mode_locked "{{ hint('Ctrl a', 'Unlock') }}{{ quick }}"
+{% for mode, bindings in modes.items() %}
+        mode_{{ mode }} "{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{{ lock }}{% if mode == 'normal' %}{{ quick }}{% endif %}"
+{% endfor %}
+        mode_enter_search "{{ hint('Type', 'Search') }}{{ hint('Enter', 'Find') }}{{ hint('Esc/Ctrl c', 'Scroll') }}{{ hint('Ctrl a', 'Lock') }}{{ hint('Ctrl q', 'Quit') }}"
+{% for mode, target in [('rename_tab', 'Tab'), ('rename_pane', 'Pane')] %}
+        mode_{{ mode }} "{{ hint('Type', 'Rename') }}{{ hint('Enter/Ctrl c', 'Finish + lock') }}{{ hint('Esc', 'Undo + ' + target) }}"
+{% endfor %}
+    }
     about location="zellij:about"
     compact-bar location="zellij:compact-bar"
     configuration location="zellij:configuration"
@@ -326,7 +359,6 @@ plugins {
         dirs "{{ home }}/dotfiles"
         layout_dir "{{ host.xdg_config }}/zellij/layouts"
     }
-    status-bar location="zellij:status-bar"
     strider location="zellij:strider"
     tab-bar location="zellij:tab-bar"
     welcome-screen location="zellij:session-manager" {

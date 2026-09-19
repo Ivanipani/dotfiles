@@ -212,34 +212,29 @@ surfaces its writes as `edited` instead of quietly losing them.
 
 ## The zellij status bar
 
-[zjstatus](https://github.com/dj95/zjstatus) adds a widget line. It does not
-replace zellij's builtin bars, because neither of those is redundant: only
-`tab-bar` knows the tabs, and only `status-bar` can render the keybind menu
-from the bindings actually in force. So every tab carries three rows of chrome
-— tabs on top, then the panes, then the widgets, then the menu.
+[zjstatus](https://github.com/dj95/zjstatus) owns both bottom rows: the existing
+session/repository/system widgets and a custom keybind menu. The builtin
+`tab-bar` stays above the panes; the official `status-bar` is replaced.
 
-```
- Zellij (dotfiles)  editor  jj  shell  +
-…
- LOCK  dotfiles  qxknvvwl feat(zellij): custom status bar  main ↑2           17%   67%   100%  Thu 03 Sep 00:14 
- Ctrl a  UNLOCK                                              Alt +  <n> New Pane  <f> Floating
-```
+The `zjkeys` alias uses zjstatus's mode widget to show the actions for the
+current mode. Session mode starts with `f Sessionizer`; rename and search
+input modes show their own finish/cancel keys. Keys are blue and labels use
+the shared Catppuccin Frappé palette. Global navigation hints sit on the right
+and disappear first when space is tight. Very long mode menus can still clip
+on narrow terminals; the primary actions come first.
 
-The widget line, left to right: input mode, session name, the jj working copy,
-then cpu, memory, battery and the clock. The menu under it steps through the
-current mode's bindings, and zellij generates it from the keybinds in
-`config.kdl`, so it cannot drift from them.
-
-zjstatus itself is configured once, as a plugin alias in
-`configs/zellij/templates/config.kdl.j2`. The three rows are declared once per
-layout, in a `default_tab_template`:
+The menu is authored alongside `keybinds` in
+`configs/zellij/templates/config.kdl.j2`. It does not discover bindings:
+update the hints when changing a shortcut. `zjstatus` owns the widget row;
+`zjkeys` is a separate instance of the same binary with no command widgets.
+Both aliases share the palette through a template macro.
 
 ```kdl
 default_tab_template {
     pane size=1 borderless=true { plugin location="zellij:tab-bar" }
     children
     pane size=1 borderless=true { plugin location="zjstatus" }
-    pane size=1 borderless=true { plugin location="zellij:status-bar" }
+    pane size=1 borderless=true { plugin location="zjkeys" }
 }
 ```
 
@@ -259,8 +254,7 @@ happened to inherit. Rendering lets the plan write an absolute interpreter, an
 absolute script path, and an explicit `PATH` built from the same vars the
 shells use.
 
-**Colours.** The Catppuccin Frappé palette is declared once in that plugin
-block as `color_*` entries. zjstatus resolves `$name` against them anywhere a
+**Colours.** The Catppuccin Frappé palette is declared once in the template macro as `color_*` entries. zjstatus resolves `$name` against them anywhere a
 format string is parsed — including the output of a widget script — so
 `configs/zellij/scripts/zjstatus-*.nu` emit `#[fg=$red]` and contain no hex
 codes. Retheming the bar is one block.
