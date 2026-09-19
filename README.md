@@ -215,6 +215,9 @@ surfaces its writes as `edited` instead of quietly losing them.
 [zjstatus](https://github.com/dj95/zjstatus) owns both bottom rows: the existing
 session/repository/system widgets and a custom keybind menu. The builtin
 `tab-bar` stays above the panes; the official `status-bar` is replaced.
+The custom `default` layout also applies to plain `zellij` launches. Existing
+or resurrected sessions retain their saved layouts; start a fresh session
+to pick up a layout change.
 
 The `zjkeys` alias uses zjstatus's mode widget to show the actions for the
 current mode. Session mode starts with `f Sessionizer`; rename and search
