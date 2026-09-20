@@ -21,12 +21,21 @@ const ADD_SCRIPT: &str = r#"mkdir -p "$(dirname "$3")" && jj -R "$1" workspace a
 /// forgetting, so uncommitted changes stay recoverable from the repository.
 const REMOVE_SCRIPT: &str = r#"jj -R "$1" workspace forget && rm -rf "$1""#;
 
+/// `$1` the workspace set directory. Aborts before deleting anything if a
+/// workspace cannot be forgotten (jj snapshots each one first).
+const DELETE_SCRIPT: &str =
+    r#"for d in "$1"/*/; do [ -d "$d" ] || continue; jj -R "$d" workspace forget || exit 1; done; rm -rf "$1""#;
+/// `$1` the session name. Detached and delayed so it outlives, and runs after
+/// leaving, the session it removes.
+const KILL_SESSION_SCRIPT: &str = r#"(sleep 1; zellij delete-session --force "$1") >/dev/null 2>&1 &"#;
+
 #[derive(Default, PartialEq)]
 enum Mode {
     #[default]
     Home,
     Name,
     Repos,
+    Confirm,
 }
 
 #[derive(Default)]
@@ -38,6 +47,8 @@ struct State {
     workspaces: Vec<String>,
     home_cursor: usize,
     name_input: String,
+    /// The workspace set awaiting delete confirmation.
+    doomed: String,
 
     /// The workspace set being created or edited.
     target: String,
@@ -125,6 +136,7 @@ impl ZellijPlugin for State {
             Mode::Home => self.render_home(rows, cols),
             Mode::Name => self.render_name(),
             Mode::Repos => self.render_repos(rows, cols),
+            Mode::Confirm => self.render_confirm(),
         }
     }
 }
@@ -199,6 +211,7 @@ impl State {
             Mode::Home => self.handle_home_key(key.bare_key, ctrl),
             Mode::Name => self.handle_name_key(key.bare_key, ctrl),
             Mode::Repos => self.handle_repos_key(key.bare_key, ctrl),
+            Mode::Confirm => self.handle_confirm_key(key.bare_key),
         }
     }
 
@@ -217,6 +230,15 @@ impl State {
                 self.reload_home();
                 true
             }
+            BareKey::Char('d') => match self.home_cursor.checked_sub(1) {
+                Some(i) => {
+                    self.doomed = self.workspaces[i].clone();
+                    self.error = None;
+                    self.mode = Mode::Confirm;
+                    true
+                }
+                None => false,
+            },
             BareKey::Enter => {
                 self.error = None;
                 match self.home_cursor.checked_sub(1) {
@@ -237,6 +259,40 @@ impl State {
                 true
             }
             _ => false,
+        }
+    }
+
+    fn handle_confirm_key(&mut self, key: BareKey) -> bool {
+        match key {
+            BareKey::Char('y') => {
+                let dir = workspace_path(&self.config, &self.doomed, None);
+                let context = BTreeMap::from([("op".to_string(), "delete".to_string())]);
+                run_command(&["sh", "-c", DELETE_SCRIPT, "sh", &dir.to_string_lossy()], context);
+                self.pending = 1;
+                true
+            }
+            BareKey::Char('n') | BareKey::Esc => {
+                self.mode = Mode::Home;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The set's directories are gone. Leave its session if we are in it, then
+    /// have it deleted (killed, if running) from outside.
+    fn set_deleted(&mut self) {
+        let doomed = self.doomed.clone();
+        if self.is_live(&doomed) || self.current_session.as_deref() == Some(doomed.as_str()) {
+            run_command(&["sh", "-c", KILL_SESSION_SCRIPT, "sh", &doomed], BTreeMap::new());
+        }
+        if self.current_session.as_deref() == Some(doomed.as_str()) {
+            let other = self.live_sessions.iter().find(|s| **s != doomed).cloned();
+            switch_session(other.as_deref());
+            close_self();
+        } else {
+            self.reload_home();
+            self.mode = Mode::Home;
         }
     }
 
@@ -388,6 +444,17 @@ impl State {
     }
 
     fn job_finished(&mut self, code: Option<i32>, stderr: &[u8], context: &BTreeMap<String, String>) -> bool {
+        if context.get("op").map(String::as_str) == Some("delete") {
+            self.pending = 0;
+            if code == Some(0) {
+                self.set_deleted();
+            } else {
+                let detail = String::from_utf8_lossy(stderr);
+                self.error = Some(format!("delete {}: {}", self.doomed, detail.trim()));
+                self.mode = Mode::Home;
+            }
+            return true;
+        }
         let (Some(op), Some(project)) = (context.get("op"), context.get("project")) else { return false };
         if code == Some(0) {
             if op == "add" && self.syncs_tabs() {
@@ -452,7 +519,7 @@ impl State {
     }
 
     fn render_home(&self, rows: usize, cols: usize) {
-        println!("{BOLD}Workspaces{RESET} — ↑/↓ move, ⏎ open, esc quit");
+        println!("{BOLD}Workspaces{RESET} — ↑/↓ move, ⏎ open, d delete, esc quit");
         println!();
         if self.render_status() {
             return;
@@ -468,6 +535,24 @@ impl State {
                 Some(_) => ("  ", DIM),
             };
             println!("{}", render_row(glyph, color, &entries[i], &[], i == self.home_cursor, cols));
+        }
+    }
+
+    fn render_confirm(&self) {
+        let count = members(&self.config, Self::mount(), &self.doomed).len();
+        println!("{BOLD}Delete '{}'?{RESET}", self.doomed);
+        println!();
+        println!("Forgets {count} jj workspace(s) and removes their directories.");
+        if self.current_session.as_deref() == Some(self.doomed.as_str()) {
+            println!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}");
+        } else if self.is_live(&self.doomed) {
+            println!("{ORANGE}Its running session will be killed.{RESET}");
+        }
+        println!();
+        if self.busy() {
+            println!("{DIM}deleting…{RESET}");
+        } else {
+            println!("{BOLD}y{RESET} delete, {BOLD}n{RESET} cancel");
         }
     }
 
