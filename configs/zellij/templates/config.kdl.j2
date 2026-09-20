@@ -310,17 +310,7 @@ plugins {
         command_sys_rendermode "dynamic"
     }
     // Mode hints mirror the bindings above; update both when changing a shortcut.
-    // Two stacked bars share one layout: zjkeys draws the key chips and zjlabels
-    // the label under each, every column padded to the same width so they align.
-{% macro cell(part, key, label) -%}
-{% set w = [key|length, label|length]|max + 2 -%}
-{% if part == 'keys' -%}
-#[bg=$blue,fg=$base,bold]{{ key.center(w) }}#[default]{{ '  ' }}
-{%- else -%}
-#[fg=$text]{{ label.center(w) }}#[default]{{ '  ' }}
-{%- endif %}
-{%- endmacro %}
-{% macro bar(part) -%}
+    zjkeys location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
 {{ palette() }}
         format_left "{mode}"
         format_center ""
@@ -328,8 +318,37 @@ plugins {
         format_space ""
         format_precedence "lrc"
         format_hide_on_overlength "true"
-        border_enabled "false"
-{% set lock = cell(part, 'Enter/Esc/Ctrl a', 'Lock') + cell(part, 'Ctrl q', 'Quit') %}
+        // The top border doubles as a spacer, making the bar two rows tall.
+        border_enabled  "true"
+        border_char     "─"
+        border_format   "#[fg=$surface1]{char}"
+        border_position "top"
+{% macro hint(key, label) -%}
+#[bg=$surface1,fg=$blue,bold] {{ key }} #[bg=$surface0,fg=$text,nobold] {{ label }} #[default] 
+{%- endmacro %}
+{# The menu the official status bar draws: every reachable mode is a ribbon,
+   and the active one opens outwards to show its own keys, in its own colour. #}
+{% set top = [('p', 'Pane', 'pane', 'mauve'), ('t', 'Tab', 'tab', 'peach'), ('r', 'Resize', 'resize', 'yellow'), ('m', 'Move', 'move', 'pink'), ('s', 'Scroll', 'scroll', 'sky'), ('o', 'Session', 'session', 'green')] %}
+{% macro ribbon(key, label) -%}
+#[bg=$surface1,fg=$subtext0,bold] {{ key }} #[bg=$surface0,fg=$subtext0,nobold] {{ label }} #[default] 
+{%- endmacro %}
+{% macro opened(key, label, color, subs) -%}
+#[bg=${{ color }},fg=$base,bold] {{ key }} {{ label }} #[bg=$surface0]{% for k, l in subs %}#[fg=${{ color }},bold] {{ k }} #[fg=$text,nobold]{{ l }} {% endfor %}#[default] 
+{%- endmacro %}
+{% set pairs = namespace(all=[]) %}
+{% for key, label, name, color in top %}{% set pairs.all = pairs.all + [(key, label)] %}{% endfor %}
+{% macro menu(mode, bindings) -%}
+{% for key, label, name, color in top -%}
+{% if name == mode -%}
+{% set subs = namespace(own=[]) -%}
+{% for k, l in bindings if l != 'Back' and (k, l) not in pairs.all %}{% set subs.own = subs.own + [(k, l)] %}{% endfor -%}
+{{ opened(key, label, color, subs.own) }}
+{%- elif (key, label) in bindings -%}
+{{ ribbon(key, label) }}
+{%- endif %}
+{%- endfor %}
+{%- endmacro %}
+{% set lock = hint('Enter/Esc/Ctrl a', 'Lock') + hint('Ctrl q', 'Quit') %}
 {% set modes = {
     'normal': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
     'pane': [('h/j/k/l', 'New ←↓↑→'), ('s', 'Stack'), ('d', 'Close'), ('r', 'Rename'), ('f', 'Fullscreen'), ('w', 'Floating'), ('e', 'Embed/float'), ('i', 'Pin'), ('p', 'Back'), ('t', 'Tab'), ('m', 'Move'), ('o', 'Session')],
@@ -342,20 +361,14 @@ plugins {
     'prompt': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
     'tmux': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')]
 } %}
-        mode_locked "{{ cell(part, 'Ctrl a', 'Unlock') }}"
+        mode_locked "{{ hint('Ctrl a', 'Unlock') }}"
 {% for mode, bindings in modes.items() %}
-        mode_{{ mode }} "{% for key, label in bindings %}{{ cell(part, key, label) }}{% endfor %}{{ lock }}"
+        mode_{{ mode }} "{% if mode == 'search' %}{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{% else %}{{ menu(mode, bindings) }}{% endif %}{{ lock }}"
 {% endfor %}
-        mode_enter_search "{{ cell(part, 'Type', 'Search') }}{{ cell(part, 'Enter', 'Find') }}{{ cell(part, 'Esc/Ctrl c', 'Scroll') }}{{ cell(part, 'Ctrl a', 'Lock') }}{{ cell(part, 'Ctrl q', 'Quit') }}"
+        mode_enter_search "{{ hint('Type', 'Search') }}{{ hint('Enter', 'Find') }}{{ hint('Esc/Ctrl c', 'Scroll') }}{{ hint('Ctrl a', 'Lock') }}{{ hint('Ctrl q', 'Quit') }}"
 {% for mode, target in [('rename_tab', 'Tab'), ('rename_pane', 'Pane')] %}
-        mode_{{ mode }} "{{ cell(part, 'Type', 'Rename') }}{{ cell(part, 'Enter/Ctrl c', 'Finish + lock') }}{{ cell(part, 'Esc', 'Undo + ' + target) }}"
+        mode_{{ mode }} "{{ hint('Type', 'Rename') }}{{ hint('Enter/Ctrl c', 'Finish + lock') }}{{ hint('Esc', 'Undo + ' + target) }}"
 {% endfor %}
-{%- endmacro %}
-    zjkeys location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
-{{ bar('keys') }}
-    }
-    zjlabels location="file:{{ host.xdg_config }}/zellij/plugins/zjstatus.wasm" {
-{{ bar('labels') }}
     }
     about location="zellij:about"
     compact-bar location="zellij:compact-bar"

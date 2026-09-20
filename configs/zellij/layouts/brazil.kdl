@@ -8,11 +8,8 @@ layout {
         pane size=1 borderless=true {
             plugin location="zjstatus"
         }
-        pane size=1 borderless=true {
+        pane size=2 borderless=true {
             plugin location="zjkeys"
-        }
-        pane size=1 borderless=true {
-            plugin location="zjlabels"
         }
     }
 
