@@ -42,6 +42,12 @@ case $1 in
   set) shift; for s; do for d in "$s"/*/; do [ -d "$d" ] || continue; forget "$d" || exit 1; done; rm -rf "$s"; done ;;
 esac
 "#;
+/// Zellij session name of a workspace set; the prefix keeps it from colliding
+/// with unrelated sessions of the same name.
+fn session_name(set: &str) -> String {
+    format!("ws-{set}")
+}
+
 /// `$1` the session name. Detached and delayed so it outlives, and runs after
 /// leaving, the session it removes.
 const KILL_SESSION_SCRIPT: &str = r#"(sleep 1; zellij delete-session --force "$1") >/dev/null 2>&1 &"#;
@@ -211,22 +217,28 @@ impl State {
             })
             .collect();
         // Start on the workspace this session belongs to, else on "new".
-        let current = self.workspaces.iter().position(|w| Some(w) == self.current_session.as_ref());
+        let current = self.workspaces.iter().position(|w| self.is_current(w));
         self.home_cursor = current.map_or(0, |i| i + 1);
     }
 
-    fn is_live(&self, name: &str) -> bool {
-        self.live_sessions.iter().any(|s| s == name)
+    fn is_live(&self, set: &str) -> bool {
+        let session = session_name(set);
+        self.live_sessions.iter().any(|s| *s == session)
     }
 
-    /// Whether `name` has a running or resurrectable session.
-    fn has_session(&self, name: &str) -> bool {
-        self.is_live(name) || self.resurrectable_sessions.iter().any(|s| s == name)
+    fn is_current(&self, set: &str) -> bool {
+        self.current_session.as_deref() == Some(session_name(set).as_str())
+    }
+
+    /// Whether `set` has a running or resurrectable session.
+    fn has_session(&self, set: &str) -> bool {
+        let session = session_name(set);
+        self.is_live(set) || self.resurrectable_sessions.iter().any(|s| *s == session)
     }
 
     /// Whether tab changes for `target` should be made in this very session.
     fn syncs_tabs(&self) -> bool {
-        self.current_session.as_deref() == Some(self.target.as_str())
+        self.is_current(&self.target)
     }
 
     fn enter_repos(&mut self, target: String, is_new: bool) {
@@ -315,8 +327,8 @@ impl State {
                     }
                     Some(i) => {
                         let name = self.workspaces[i].clone();
-                        if self.is_live(&name) && self.current_session.as_deref() != Some(name.as_str()) {
-                            switch_session(Some(&name));
+                        if self.is_live(&name) && !self.is_current(&name) {
+                            switch_session(Some(&session_name(&name)));
                             close_self();
                         } else {
                             self.enter_repos(name, false);
@@ -361,9 +373,9 @@ impl State {
     fn sets_deleted(&mut self) {
         let doomed = self.doomed.clone();
         for set in doomed.iter().filter(|s| self.has_session(s)) {
-            run_command(&["sh", "-c", KILL_SESSION_SCRIPT, "sh", set], BTreeMap::new());
+            run_command(&["sh", "-c", KILL_SESSION_SCRIPT, "sh", &session_name(set)], BTreeMap::new());
         }
-        let in_doomed = |s: &String| doomed.contains(s);
+        let in_doomed = |s: &String| doomed.iter().any(|d| session_name(d) == *s);
         if self.current_session.as_ref().is_some_and(in_doomed) {
             let other = self.live_sessions.iter().find(|s| !in_doomed(s)).cloned();
             switch_session(other.as_deref());
@@ -665,7 +677,7 @@ impl State {
                 .collect();
             match compose(&self.template, &projects) {
                 Ok(kdl) => switch_session_with_layout(
-                    Some(&self.target),
+                    Some(&session_name(&self.target)),
                     LayoutInfo::Stringified(kdl),
                     Some(workspace_path(&self.config, &self.target, None)),
                 ),
