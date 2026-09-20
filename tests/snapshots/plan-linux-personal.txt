@@ -30,10 +30,10 @@ vcs	symlink	ln -s $REPO/configs/vcs/git/gitignore_global $HOME/.gitignore_global
 zellij	dir	mkdir -p $HOME/.config/zellij
 zellij	render	render config.kdl.j2 -> $HOME/.config/zellij/config.kdl (symlink)
 zellij	dir	mkdir -p $HOME/.config/zellij/layouts
-zellij	render	render alfa.kdl.j2 -> $HOME/.config/zellij/layouts/alfa.kdl (symlink)
-zellij	render	render brazil.kdl.j2 -> $HOME/.config/zellij/layouts/brazil.kdl (symlink)
-zellij	render	render default.kdl.j2 -> $HOME/.config/zellij/layouts/default.kdl (symlink)
-zellij	render	render workspace-tab.kdl.j2 -> $HOME/.config/zellij/workspace-tab.kdl (symlink)
+zellij	render	render alfa.kdl.j2 -> $HOME/.config/zellij/layouts/alfa.kdl (copy)
+zellij	render	render brazil.kdl.j2 -> $HOME/.config/zellij/layouts/brazil.kdl (copy)
+zellij	render	render default.kdl.j2 -> $HOME/.config/zellij/layouts/default.kdl (copy)
+zellij	render	render workspace-tab.kdl.j2 -> $HOME/.config/zellij/workspace-tab.kdl (copy)
 zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
 zellij	fetch	fetch https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm -> $REPO/configs/zellij/plugins/zellij-attention.wasm
 zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm

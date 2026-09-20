@@ -156,10 +156,12 @@ class Zellij(Module):
         yield Dir(cfg)
         yield Render(self.path("templates/config.kdl.j2"), cfg / "config.kdl")
         # One shared tab template feeds every layout, the workspace plugin's included.
+        # Copied rather than symlinked: the plugin sandbox is denied (EPERM) when
+        # it follows a link out of the layouts directory.
         yield Dir(cfg / "layouts")
         for layout in sorted(self.path("templates", "layouts").glob("*.kdl.j2")):
-            yield Render(layout, cfg / "layouts" / layout.name.removesuffix(".j2"))
-        yield Render(self.path("templates/workspace-tab.kdl.j2"), cfg / "workspace-tab.kdl")
+            yield Render(layout, cfg / "layouts" / layout.name.removesuffix(".j2"), mode="copy")
+        yield Render(self.path("templates/workspace-tab.kdl.j2"), cfg / "workspace-tab.kdl", mode="copy")
         # Checksums pin the exact plugin builds that are known to work here.
         for name, url, digest, _ in PLUGINS:
             yield Fetch(url, self.path("plugins", f"{name}.wasm"), digest)
