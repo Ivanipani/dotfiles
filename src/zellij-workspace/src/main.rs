@@ -1,3 +1,4 @@
+mod scripts;
 mod config;
 mod layout;
 mod manifest;
@@ -9,6 +10,7 @@ use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
 use config::Config;
+use scripts::PREPARE_SCRIPT;
 use layout::{compose, tab_names, Project, DEFAULT_TEMPLATE, FILE_NAME as LAYOUT_FILE_NAME};
 use manifest::{Component, Manifest};
 use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, workspaces_root, Repo};
@@ -328,8 +330,8 @@ impl State {
                     Some(i) => {
                         let name = self.workspaces[i].clone();
                         if self.is_live(&name) && !self.is_current(&name) {
-                            switch_session(Some(&session_name(&name)));
-                            close_self();
+                            self.target = name;
+                            self.prepare_workspaces(true);
                         } else {
                             self.enter_repos(name, false);
                         }
@@ -642,6 +644,15 @@ impl State {
     }
 
     fn job_finished(&mut self, code: Option<i32>, stdout: &[u8], stderr: &[u8], context: &BTreeMap<String, String>) -> bool {
+        if context.get("op").map(String::as_str) == Some("prepare") {
+            self.pending = 0;
+            if code == Some(0) {
+                self.open_target(context.contains_key("live"));
+            } else {
+                self.error = Some(format!("configure workspaces: {}", String::from_utf8_lossy(stderr).trim()));
+            }
+            return true;
+        }
         if context.get("op").map(String::as_str) == Some("delete") {
             self.pending = 0;
             if code == Some(0) {
@@ -688,6 +699,30 @@ impl State {
     /// (or not running) also gets its session, with the stored layout.
     fn finish(&mut self) {
         if !self.failures.is_empty() {
+            return;
+        }
+        self.prepare_workspaces(false);
+    }
+
+    fn prepare_workspaces(&mut self, live: bool) {
+        let mut context = BTreeMap::from([("op".into(), "prepare".into())]);
+        if live {
+            context.insert("live".into(), String::new());
+        }
+        let dirs: Vec<String> = members(&self.config, Self::mount(), &self.target)
+            .iter()
+            .map(|name| self.project_dir(name).to_string_lossy().into_owned())
+            .collect();
+        let mut args = vec!["sh", "-c", PREPARE_SCRIPT, "sh"];
+        args.extend(dirs.iter().map(String::as_str));
+        self.pending = 1;
+        run_command(&args, context);
+    }
+
+    fn open_target(&mut self, live: bool) {
+        if live {
+            switch_session(Some(&session_name(&self.target)));
+            close_self();
             return;
         }
         if !self.syncs_tabs() {
@@ -843,3 +878,4 @@ impl State {
         }
     }
 }
+
