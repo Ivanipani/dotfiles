@@ -53,3 +53,53 @@ fn truncate(text: &str, width: usize) -> String {
     truncated.push('…');
     truncated
 }
+
+/// Rows taken by the header, its rule and the footer around the body.
+const CHROME_ROWS: usize = 3;
+
+/// Rows available to the body of a screen `rows` tall.
+pub fn body_height(rows: usize) -> usize {
+    rows.saturating_sub(CHROME_ROWS)
+}
+
+/// A bold `title` on the left and dim `right` text flush against the right edge.
+pub fn header(title: &str, right: &str, width: usize) -> String {
+    let gap = width.saturating_sub(title.chars().count() + right.chars().count()).max(1);
+    format!("{BOLD}{title}{RESET}{}{DIM}{right}{RESET}", " ".repeat(gap))
+}
+
+/// Footer of keybinding chips (`key`, description); hints that don't fit are dropped.
+pub fn key_bar(hints: &[(&str, &str)], width: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+    for (key, desc) in hints {
+        let chip = key.chars().count() + 2 + 1 + desc.chars().count();
+        let gap = if out.is_empty() { 0 } else { 2 };
+        if used + gap + chip > width {
+            break;
+        }
+        out.push_str(&" ".repeat(gap));
+        out.push_str(&format!("{REVERSE} {key} {RESET} {desc}"));
+        used += gap + chip;
+    }
+    out
+}
+
+/// A labelled text input with a cursor; labels are padded to `label_width` so stacked inputs align.
+pub fn input(label: &str, label_width: usize, text: &str) -> String {
+    format!("{BOLD}{label:<label_width$}{RESET} {text}█")
+}
+
+/// Draws header, rule, `body` (padded to fill the screen) and a footer pinned to the last row.
+pub fn draw(header: &str, body: &[String], footer: &str, rows: usize, cols: usize) {
+    let height = body_height(rows);
+    println!("{header}");
+    println!("{DIM}{}{RESET}", "─".repeat(cols));
+    for line in body.iter().take(height) {
+        println!("{line}");
+    }
+    for _ in body.len().min(height)..height {
+        println!();
+    }
+    print!("{footer}");
+}

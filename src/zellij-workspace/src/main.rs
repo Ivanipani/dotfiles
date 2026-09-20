@@ -14,7 +14,7 @@ use manifest::{Component, Manifest};
 use repos::{list_workspaces, members, sanitize_name, scan_repos, workspace_path, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
 use zellij_common::list::{move_cursor, scroll_window};
-use zellij_common::ui::{render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
+use zellij_common::ui::{body_height, draw, header, input, key_bar, render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
 use zellij_common::fuzzy;
 
 /// `$1` source repository, `$2` workspace name, `$3` destination.
@@ -154,9 +154,9 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         match self.mode {
             Mode::Home => self.render_home(rows, cols),
-            Mode::Name => self.render_name(),
+            Mode::Name => self.render_name(rows, cols),
             Mode::Repos => self.render_repos(rows, cols),
-            Mode::Confirm => self.render_confirm(),
+            Mode::Confirm => self.render_confirm(rows, cols),
         }
     }
 }
@@ -555,90 +555,105 @@ impl State {
         close_self();
     }
 
-    fn render_status(&self) -> bool {
+    /// Permission / host / error lines; `true` if the plugin isn't ready for its normal body.
+    fn status_lines(&self, body: &mut Vec<String>) -> bool {
         if let Some(err) = &self.error {
-            println!("{RED}{err}{RESET}");
+            body.push(format!("{RED}{err}{RESET}"));
         }
         if !self.permissions_granted {
-            println!("{DIM}waiting for permissions…{RESET}");
+            body.push(format!("{DIM}waiting for permissions…{RESET}"));
             return true;
         }
         if !self.host_ready {
-            println!("{DIM}waiting for host filesystem…{RESET}");
+            body.push(format!("{DIM}waiting for host filesystem…{RESET}"));
             return true;
         }
         false
     }
 
     fn render_home(&self, rows: usize, cols: usize) {
-        println!("{BOLD}Workspaces{RESET} — ↑/↓ move, ⏎ open, d delete, esc quit");
-        println!();
-        for note in &self.notes {
-            println!("{GREEN}{note}{RESET}");
+        let mut body: Vec<String> = self.notes.iter().map(|n| format!("{GREEN}{n}{RESET}")).collect();
+        let ready = !self.status_lines(&mut body);
+        if ready {
+            let width = self.workspaces.iter().map(|w| w.chars().count()).max().unwrap_or(0);
+            let mut entries = vec![("  ", DIM, "new workspace".to_string())];
+            for name in &self.workspaces {
+                let (glyph, color, state) = if self.current_session.as_deref() == Some(name.as_str()) {
+                    ("◉ ", GREEN, "current")
+                } else if self.is_live(name) {
+                    ("● ", ORANGE, "running")
+                } else {
+                    ("  ", DIM, "")
+                };
+                entries.push((glyph, color, format!("{name:<width$}  {state}").trim_end().to_string()));
+            }
+            entries[0].2 = format!("+ {}", entries[0].2);
+            let window = scroll_window(self.home_cursor, entries.len(), body_height(rows).saturating_sub(body.len()));
+            for i in window {
+                let (glyph, color, text) = &entries[i];
+                body.push(render_row(glyph, color, text, &[], i == self.home_cursor, cols));
+            }
         }
-        if self.render_status() {
-            return;
-        }
-        let entries = std::iter::once("＋ new workspace".to_string()).chain(self.workspaces.iter().cloned());
-        let entries: Vec<String> = entries.collect();
-        let window = scroll_window(self.home_cursor, entries.len(), rows.saturating_sub(3 + self.notes.len()));
-        for i in window {
-            let (glyph, color) = match i.checked_sub(1).map(|w| &self.workspaces[w]) {
-                None => ("  ", DIM),
-                Some(name) if self.current_session.as_deref() == Some(name.as_str()) => ("◉ ", GREEN),
-                Some(name) if self.is_live(name) => ("● ", ORANGE),
-                Some(_) => ("  ", DIM),
-            };
-            println!("{}", render_row(glyph, color, &entries[i], &[], i == self.home_cursor, cols));
-        }
+        let hints = [("↑↓", "move"), ("⏎", "open"), ("d", "delete"), ("^r", "refresh"), ("esc", "quit")];
+        let right = format!("{} sets", self.workspaces.len());
+        draw(&header("Workspaces", &right, cols), &body, &key_bar(&hints, cols), rows, cols);
     }
 
-    fn render_confirm(&self) {
+    fn render_confirm(&self, rows: usize, cols: usize) {
         let count = members(&self.config, Self::mount(), &self.doomed).len();
-        println!("{BOLD}Delete '{}'?{RESET}", self.doomed);
-        println!();
-        println!("Forgets {count} jj workspace(s) and removes their directories.");
-        println!("Uncommitted changes are kept on a {BOLD}saved-{}{RESET} bookmark.", self.doomed);
+        let mut body = vec![
+            String::new(),
+            format!("Forgets {count} jj workspace(s) and removes their directories."),
+            format!("Uncommitted changes are kept on a {BOLD}saved-{}{RESET} bookmark.", self.doomed),
+        ];
         if self.current_session.as_deref() == Some(self.doomed.as_str()) {
-            println!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}");
+            body.push(format!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}"));
         } else if self.is_live(&self.doomed) {
-            println!("{ORANGE}Its running session will be killed.{RESET}");
+            body.push(format!("{ORANGE}Its running session will be killed.{RESET}"));
         }
-        println!();
-        if self.busy() {
-            println!("{DIM}deleting…{RESET}");
+        let footer = if self.busy() {
+            format!("{DIM}deleting…{RESET}")
         } else {
-            println!("{BOLD}y{RESET} delete, {BOLD}n{RESET} cancel");
-        }
+            key_bar(&[("y", "delete"), ("n", "cancel"), ("esc", "cancel")], cols)
+        };
+        draw(&header(&format!("Delete '{}'?", self.doomed), "", cols), &body, &footer, rows, cols);
     }
 
-    fn render_name(&self) {
-        println!("{BOLD}New workspace{RESET} — ⏎ continue, esc back");
-        println!("{BOLD}name>{RESET} {}█", self.name_input);
-        println!();
-        self.render_status();
+    fn render_name(&self, rows: usize, cols: usize) {
+        let mut body = vec![String::new(), input("name", 4, &self.name_input)];
+        self.status_lines(&mut body);
+        let hints = [("⏎", "continue"), ("esc", "back")];
+        draw(&header("New workspace", "", cols), &body, &key_bar(&hints, cols), rows, cols);
     }
 
     fn render_repos(&self, rows: usize, cols: usize) {
         let verb = if self.is_new { "create" } else { "apply" };
-        println!("{BOLD}{}{RESET} — tab toggle, ⏎ {verb}, esc back", self.target);
-        println!("{BOLD}>{RESET} {}█", self.query);
-        println!();
-        self.render_status();
-        for failure in &self.failures {
-            println!("{RED}{failure}{RESET}");
+        let right = format!("{} selected · {}/{} shown", self.selected.len(), self.matches.len(), self.repos.len());
+        let mut body = vec![input("filter", 6, &self.query)];
+        body.push(format!("{GREEN}[+] add{RESET}  {RED}[-] remove{RESET}  {ORANGE}[x] kept{RESET}  {DIM}[ ] not in set{RESET}"));
+        let ready = !self.status_lines(&mut body);
+        body.extend(self.failures.iter().map(|f| format!("{RED}{f}{RESET}")));
+        if ready {
+            if self.busy() {
+                body.push(format!("{DIM}working… ({} left){RESET}", self.pending));
+            } else if self.repos.is_empty() {
+                body.push(format!("{DIM}no jujutsu repositories found under the configured roots{RESET}"));
+            } else {
+                self.repo_rows(&mut body, rows, cols);
+            }
         }
-        if self.busy() {
-            println!("{DIM}working… ({} left){RESET}", self.pending);
-            return;
-        }
-        if self.repos.is_empty() {
-            println!("{DIM}no jujutsu repositories found under the configured roots{RESET}");
-            return;
-        }
+        let hints = if self.busy() {
+            vec![("^c", "close")]
+        } else {
+            vec![("tab", "toggle"), ("⏎", verb), ("↑↓", "move"), ("^u", "clear"), ("^r", "rescan"), ("esc", "back")]
+        };
+        draw(&header(&self.target, &right, cols), &body, &key_bar(&hints, cols), rows, cols);
+    }
 
-        let reserved = 4 + self.failures.len() + usize::from(self.error.is_some());
-        let window = scroll_window(self.cursor, self.matches.len(), rows.saturating_sub(reserved));
+    /// Appends the matching repos as a name column followed by the source path.
+    fn repo_rows(&self, body: &mut Vec<String>, rows: usize, cols: usize) {
+        let name_width = self.repos.iter().map(|r| r.name.chars().count()).max().unwrap_or(0);
+        let window = scroll_window(self.cursor, self.matches.len(), body_height(rows).saturating_sub(body.len()));
         for (row, m) in self.matches.iter().enumerate().skip(window.start).take(window.len()) {
             let (glyph, color) = match (self.initial.contains(&m.index), self.selected.contains(&m.index)) {
                 (false, true) => ("[+] ", GREEN),
@@ -646,9 +661,17 @@ impl State {
                 (true, true) => ("[x] ", ORANGE),
                 (false, false) => ("[ ] ", DIM),
             };
-            let text = self.repos[m.index].label();
-            println!("{}", render_row(glyph, color, &text, &m.char_indices, row == self.cursor, cols));
+            let repo = &self.repos[m.index];
+            let name_len = repo.name.chars().count();
+            let pad = name_width - name_len;
+            let detail = match &repo.source {
+                Some(path) => path.display().to_string(),
+                None => "(source not found)".to_string(),
+            };
+            let text = format!("{}{}  {detail}", repo.name, " ".repeat(pad));
+            // Match indices refer to the unpadded label; shift those past the name.
+            let indices: Vec<usize> = m.char_indices.iter().map(|&i| if i < name_len { i } else { i + pad }).collect();
+            body.push(render_row(glyph, color, &text, &indices, row == self.cursor, cols));
         }
     }
 }
-
