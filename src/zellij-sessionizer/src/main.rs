@@ -1,5 +1,4 @@
 mod config;
-mod fuzzy;
 mod scan;
 mod ui;
 
@@ -10,6 +9,8 @@ use zellij_tile::prelude::*;
 use config::Config;
 use scan::{scan, scan_layouts, Candidate, LayoutOption};
 use ui::RowStatus;
+use zellij_common::list::{move_cursor, scroll_window};
+use zellij_common::{fuzzy, ui::{BOLD, DIM, RED, RESET}};
 
 #[derive(Default)]
 enum Mode {
@@ -257,24 +258,24 @@ impl State {
     }
 
     fn render_directories(&self, rows: usize, cols: usize) {
-        println!("{}Sessionizer{} — type to filter, ↑/↓ move, ⏎ select, esc quit", ui::BOLD, ui::RESET);
-        println!("{}>{} {}█", ui::BOLD, ui::RESET, self.query);
+        println!("{}Sessionizer{} — type to filter, ↑/↓ move, ⏎ select, esc quit", BOLD, RESET);
+        println!("{}>{} {}█", BOLD, RESET, self.query);
         println!();
 
         if let Some(err) = &self.error {
-            println!("{}{err}{}", ui::RED, ui::RESET);
+            println!("{}{err}{}", RED, RESET);
             return;
         }
         if !self.permissions_granted {
-            println!("{}waiting for permissions…{}", ui::DIM, ui::RESET);
+            println!("{}waiting for permissions…{}", DIM, RESET);
             return;
         }
         if !self.host_ready {
-            println!("{}waiting for host filesystem…{}", ui::DIM, ui::RESET);
+            println!("{}waiting for host filesystem…{}", DIM, RESET);
             return;
         }
         if self.candidates.is_empty() {
-            println!("{}no project directories found under the configured roots{}", ui::DIM, ui::RESET);
+            println!("{}no project directories found under the configured roots{}", DIM, RESET);
             return;
         }
 
@@ -289,8 +290,8 @@ impl State {
     }
 
     fn render_layouts(&self, rows: usize, cols: usize, session_name: &str) {
-        println!("{}Layout for {session_name}{} — ↑/↓ move, ⏎ create, esc back", ui::BOLD, ui::RESET);
-        println!("{}>{} {}█", ui::BOLD, ui::RESET, self.layout_query);
+        println!("{}Layout for {session_name}{} — ↑/↓ move, ⏎ create, esc back", BOLD, RESET);
+        println!("{}>{} {}█", BOLD, RESET, self.layout_query);
         println!();
 
         let list_height = rows.saturating_sub(4);
@@ -301,24 +302,4 @@ impl State {
             println!("{}", ui::render_row(&layout.name, &m.char_indices, RowStatus::Inactive, selected, cols));
         }
     }
-}
-
-fn move_cursor(cursor: &mut usize, len: usize, delta: isize) -> bool {
-    if len == 0 {
-        return false;
-    }
-    let next = (*cursor as isize + delta).clamp(0, len as isize - 1) as usize;
-    if next == *cursor {
-        return false;
-    }
-    *cursor = next;
-    true
-}
-
-fn scroll_window(cursor: usize, len: usize, height: usize) -> std::ops::Range<usize> {
-    if height == 0 || len == 0 {
-        return 0..0;
-    }
-    let start = cursor.saturating_sub(height.saturating_sub(1)).min(len.saturating_sub(height.min(len)));
-    start..len.min(start + height)
 }

@@ -1,0 +1,8 @@
+[package]
+name = "zellij-common"
+version = "0.1.0"
+edition = "2021"
+description = "Helpers shared by this repo's zellij plugins: fuzzy filtering, list rendering, host-mount paths."
+
+[dependencies]
+fuzzy-matcher = "0.3"

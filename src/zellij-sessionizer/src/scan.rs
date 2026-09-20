@@ -1,5 +1,7 @@
-use std::collections::{BTreeSet, VecDeque};
-use std::path::{Component, Path, PathBuf};
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+use zellij_common::host::{host_path, mounted_path, HOST_MOUNT};
 
 use crate::config::Config;
 
@@ -13,44 +15,7 @@ pub struct Candidate {
 /// project directories, mirroring `select_project_directory` /
 /// `PROJECT_ROOTS` / `PROJECT_DIRS` from sessionizer-david.zsh.
 pub fn scan(config: &Config) -> Vec<Candidate> {
-    scan_at(config, Path::new("/host"))
-}
-
-fn mounted_path(mount: &Path, host: &Path) -> std::io::Result<PathBuf> {
-    let mut pending: VecDeque<_> = host.components().map(|c| c.as_os_str().to_owned()).collect();
-    let mut resolved = mount.to_path_buf();
-    let mut links = 0;
-    while let Some(part) = pending.pop_front() {
-        match Path::new(&part).components().next() {
-            Some(Component::RootDir) => resolved = mount.to_path_buf(),
-            Some(Component::ParentDir) => {
-                if resolved != mount {
-                    resolved.pop();
-                }
-            }
-            Some(Component::Normal(_)) => {
-                resolved.push(&part);
-                // Resolve host symlinks ourselves: WASI cannot follow absolute targets.
-                if std::fs::symlink_metadata(&resolved)?.file_type().is_symlink() {
-                    links += 1;
-                    if links > 40 {
-                        return Err(std::io::Error::other("too many symbolic links"));
-                    }
-                    let target = std::fs::read_link(&resolved)?;
-                    resolved.pop();
-                    for component in target.components().rev() {
-                        pending.push_front(component.as_os_str().to_owned());
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(resolved)
-}
-
-fn host_path(mount: &Path, guest: &Path) -> PathBuf {
-    Path::new("/").join(guest.strip_prefix(mount).expect("path outside host mount"))
+    scan_at(config, Path::new(HOST_MOUNT))
 }
 
 fn scan_at(config: &Config, mount: &Path) -> Vec<Candidate> {
@@ -150,7 +115,7 @@ pub struct LayoutOption {
 /// Ports `select_zellij_layout`: every `.kdl`/`.yaml`/`.yml` file directly
 /// under `layout_dir`, named by its stem, with "No layout" pinned first.
 pub fn scan_layouts(layout_dir: &str) -> Vec<LayoutOption> {
-    scan_layouts_at(layout_dir, Path::new("/host"))
+    scan_layouts_at(layout_dir, Path::new(HOST_MOUNT))
 }
 
 fn scan_layouts_at(layout_dir: &str, mount: &Path) -> Vec<LayoutOption> {

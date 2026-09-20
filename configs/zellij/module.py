@@ -34,14 +34,19 @@ PLUGINS = (
     ),
 )
 
-# Our own plugin (src/zellij-sessionizer): built from source rather than
-# fetched, so it carries no url/checksum — just the permissions it asks for.
-# It replaces laperlej/zellij-sessionizer and mostafaqanbaryan/zellij-switch,
-# doing both jobs (and the fuzzy-finding fzf/fd used to do) natively.
+# Our own plugins (src/<name>): built from source rather than fetched, so they
+# carry no url/checksum — just the permissions they ask for.
+# zellij-sessionizer replaces laperlej/zellij-sessionizer and
+# mostafaqanbaryan/zellij-switch, doing both jobs (and the fuzzy-finding fzf/fd
+# used to do) natively. zellij-workspace manages sessions of jj workspaces.
 LOCAL_PLUGINS = (
     (
         "zellij-sessionizer",
         ("ReadApplicationState", "ChangeApplicationState", "FullHdAccess"),
+    ),
+    (
+        "zellij-workspace",
+        ("ReadApplicationState", "ChangeApplicationState", "FullHdAccess", "RunCommands"),
     ),
 )
 
@@ -159,15 +164,15 @@ class Zellij(Module):
         # one-time build rather than a rebuild-on-every-apply: cargo's own
         # incremental cache does the rest during development. Requires the
         # wasm32-wasip1 rustup target (`rustup target add wasm32-wasip1`).
-        crate_dir = host.repo / "src" / "zellij-sessionizer"
-        built_wasm = crate_dir / "target" / "wasm32-wasip1" / "release" / "zellij_sessionizer.wasm"
-        yield Run(
-            ("cargo", "build", "--release", "--target", "wasm32-wasip1"),
-            unless=built_wasm,
-            cwd=crate_dir,
-            desc="cargo build zellij-sessionizer (wasm32-wasip1)",
-        )
         for name, _ in LOCAL_PLUGINS:
+            crate_dir = host.repo / "src" / name
+            built_wasm = crate_dir / "target" / "wasm32-wasip1" / "release" / f"{name.replace('-', '_')}.wasm"
+            yield Run(
+                ("cargo", "build", "--release", "--target", "wasm32-wasip1"),
+                unless=built_wasm,
+                cwd=crate_dir,
+                desc=f"cargo build {name} (wasm32-wasip1)",
+            )
             yield Symlink(built_wasm, self.path("plugins", f"{name}.wasm"))
 
         yield Symlink(self.path("plugins"), cfg / "plugins")

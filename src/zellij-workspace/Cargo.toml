@@ -1,0 +1,16 @@
+[package]
+name = "zellij-workspace"
+version = "0.1.0"
+edition = "2021"
+description = "Native zellij plugin: manage a session of jujutsu workspaces, one tab per project."
+
+[[bin]]
+name = "zellij_workspace"
+path = "src/main.rs"
+
+[dependencies]
+# Pin to the zellij version this repo installs (see configs/zellij/module.py) —
+# the plugin ABI is not guaranteed compatible across zellij releases.
+zellij-tile = "0.45.1"
+zellij-common = { path = "../zellij-common" }
+kdl = "4"

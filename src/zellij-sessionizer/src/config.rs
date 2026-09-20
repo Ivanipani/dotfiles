@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use zellij_common::config::{default_excludes, split_list};
+
 /// Plugin configuration, supplied by the layout/KDL `plugin` block that loads
 /// this plugin (see the `configuration` argument of `ZellijPlugin::load`).
 ///
@@ -26,24 +28,6 @@ impl Default for Config {
     }
 }
 
-fn default_excludes() -> Vec<String> {
-    [
-        "node_modules",
-        ".git",
-        "target",
-        "build",
-        "dist",
-        ".cache",
-        ".next",
-        ".venv",
-        "venv",
-        "__pycache__",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
-}
-
 impl Config {
     pub fn from_map(map: &BTreeMap<String, String>) -> Self {
         let mut config = Config::default();
@@ -66,13 +50,4 @@ impl Config {
         }
         config
     }
-}
-
-fn split_list(value: &str) -> Vec<String> {
-    value
-        .split(':')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect()
 }

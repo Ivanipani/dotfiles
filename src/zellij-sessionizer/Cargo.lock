@@ -2541,10 +2541,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "zellij-sessionizer"
+name = "zellij-common"
 version = "0.1.0"
 dependencies = [
  "fuzzy-matcher",
+]
+
+[[package]]
+name = "zellij-sessionizer"
+version = "0.1.0"
+dependencies = [
+ "zellij-common",
  "zellij-tile",
 ]
 

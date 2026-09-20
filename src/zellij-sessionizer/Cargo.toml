@@ -12,4 +12,4 @@ path = "src/main.rs"
 # Pin to the zellij version this repo installs (see configs/zellij/module.py) —
 # the plugin ABI is not guaranteed compatible across zellij releases.
 zellij-tile = "0.45.1"
-fuzzy-matcher = "0.3"
+zellij-common = { path = "../zellij-common" }
