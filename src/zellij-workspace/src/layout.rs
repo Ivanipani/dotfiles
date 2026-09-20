@@ -14,7 +14,7 @@ pub struct Project {
 }
 
 /// Per project: a tab and the command it runs in the project root.
-const TABS: [(&str, &str); 2] = [("", "pane command=\"nvim\" borderless=true {\n args \".\"\n}"), (" jj", "pane command=\"jjui\" borderless=true")];
+const TABS: [(&str, &str); 2] = [("", "pane command=\"nvim\" {\n args \".\"\n}"), (" jj", "pane command=\"jjui\"")];
 
 /// Names of the tabs `compose` creates for a project.
 pub fn tab_names(project: &str) -> impl Iterator<Item = String> + '_ {

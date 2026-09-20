@@ -1,4 +1,5 @@
-layout {
+    // Every tab inherits the tab bar, widgets, and mode-aware zjstatus hints.
+    // The bars are one row tall, so they stay borderless: a frame needs three.
     default_tab_template {
         pane size=1 borderless=true {
             plugin location="zellij:tab-bar"
@@ -11,7 +12,3 @@ layout {
             plugin location="zjkeys"
         }
     }
-    tab {
-        pane
-    }
-}

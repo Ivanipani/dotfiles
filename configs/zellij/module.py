@@ -155,7 +155,11 @@ class Zellij(Module):
         cfg = host.xdg_config / "zellij"
         yield Dir(cfg)
         yield Render(self.path("templates/config.kdl.j2"), cfg / "config.kdl")
-        yield Symlink(self.path("layouts"), cfg / "layouts")
+        # One shared tab template feeds every layout, the workspace plugin's included.
+        yield Dir(cfg / "layouts")
+        for layout in sorted(self.path("templates", "layouts").glob("*.kdl.j2")):
+            yield Render(layout, cfg / "layouts" / layout.name.removesuffix(".j2"))
+        yield Render(self.path("templates/workspace-tab.kdl.j2"), cfg / "workspace-tab.kdl")
         # Checksums pin the exact plugin builds that are known to work here.
         for name, url, digest, _ in PLUGINS:
             yield Fetch(url, self.path("plugins", f"{name}.wasm"), digest)

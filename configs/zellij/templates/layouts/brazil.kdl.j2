@@ -1,18 +1,5 @@
 layout {
-    // Every tab inherits the tab bar, widgets, and mode-aware zjstatus hints.
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=1 borderless=true {
-            plugin location="zjstatus"
-        }
-        pane size=1 borderless=true {
-            plugin location="zjkeys"
-        }
-    }
-
+{% include "templates/tab-template.kdl.j2" %}
     tab name="editor" hide_floating_panes=true focus=true {
         pane command="nvim" {
             args "."

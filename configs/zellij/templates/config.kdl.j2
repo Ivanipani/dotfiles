@@ -376,12 +376,12 @@ plugins {
     sessionizer location="file:{{ host.xdg_config }}/zellij/plugins/zellij-sessionizer.wasm" {
         roots "{{ home }}/github:{{ home }}"
         dirs "{{ home }}/dotfiles"
-        layout_dir "{{ host.repo }}/configs/zellij/layouts"
+        layout_dir "{{ host.xdg_config }}/zellij/layouts"
     }
     workspace location="file:{{ host.xdg_config }}/zellij/plugins/zellij-workspace.wasm" {
         roots "{{ home }}/github:{{ home }}"
         workspaces_dir "{{ home }}/.local/share/workspaces"
-        layout "{{ host.repo }}/configs/zellij/workspace-tab.kdl"
+        layout "{{ host.xdg_config }}/zellij/workspace-tab.kdl"
     }
     strider location="zellij:strider"
     tab-bar location="zellij:tab-bar"

@@ -41,15 +41,21 @@ vcs	render	render gitconfig.j2 -> $HOME/.gitconfig (symlink)
 vcs	symlink	ln -s $REPO/configs/vcs/git/gitignore_global $HOME/.gitignore_global
 zellij	dir	mkdir -p $HOME/.config/zellij
 zellij	render	render config.kdl.j2 -> $HOME/.config/zellij/config.kdl (symlink)
-zellij	symlink	ln -s $REPO/configs/zellij/layouts $HOME/.config/zellij/layouts
+zellij	dir	mkdir -p $HOME/.config/zellij/layouts
+zellij	render	render alfa.kdl.j2 -> $HOME/.config/zellij/layouts/alfa.kdl (symlink)
+zellij	render	render brazil.kdl.j2 -> $HOME/.config/zellij/layouts/brazil.kdl (symlink)
+zellij	render	render default.kdl.j2 -> $HOME/.config/zellij/layouts/default.kdl (symlink)
+zellij	render	render workspace-tab.kdl.j2 -> $HOME/.config/zellij/workspace-tab.kdl (symlink)
 zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/download/0.3.0/vim-zellij-navigator.wasm -> $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm
 zellij	fetch	fetch https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm -> $REPO/configs/zellij/plugins/zellij-attention.wasm
 zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm
 zellij	run	cargo build zellij-sessionizer (wasm32-wasip1)
 zellij	symlink	ln -s $REPO/src/zellij-sessionizer/target/wasm32-wasip1/release/zellij_sessionizer.wasm $REPO/configs/zellij/plugins/zellij-sessionizer.wasm
+zellij	run	cargo build zellij-workspace (wasm32-wasip1)
+zellij	symlink	ln -s $REPO/src/zellij-workspace/target/wasm32-wasip1/release/zellij_workspace.wasm $REPO/configs/zellij/plugins/zellij-workspace.wasm
 zellij	symlink	ln -s $REPO/configs/zellij/plugins $HOME/.config/zellij/plugins
 zellij	dir	mkdir -p $HOME/Library/Caches/org.Zellij-Contributors.Zellij
-zellij	grant	grant 4 plugins their permissions in $HOME/Library/Caches/org.Zellij-Contributors.Zellij/permissions.kdl
+zellij	grant	grant 5 plugins their permissions in $HOME/Library/Caches/org.Zellij-Contributors.Zellij/permissions.kdl
 zellij	dir	mkdir -p $HOME/scripts
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/sessionizer-david.zsh $HOME/scripts/sessionizer-david.zsh
 zellij	symlink	ln -s $REPO/configs/zellij/scripts/zjstatus-cache.nu $HOME/scripts/zjstatus-cache.nu
