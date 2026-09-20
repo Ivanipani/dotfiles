@@ -333,48 +333,33 @@ plugins {
 {% macro hint(key, label) -%}
 #[bg=$surface1,fg=$blue,bold] {{ key }} #[bg=$surface0,fg=$text,nobold] {{ label }} #[default] 
 {%- endmacro %}
-{# The menu the official status bar draws: every reachable mode is a ribbon,
-   and the active one opens outwards to show its own keys, in its own colour. #}
-{% set top = [('p', 'Pane', 'pane', 'mauve'), ('t', 'Tab', 'tab', 'peach'), ('r', 'Resize', 'resize', 'yellow'), ('m', 'Move', 'move', 'pink'), ('s', 'Scroll', 'scroll', 'sky'), ('o', 'Session', 'session', 'green')] %}
-{% macro ribbon(key, label) -%}
-#[bg=$surface1,fg=$subtext0,bold] {{ key }} #[bg=$surface0,fg=$subtext0,nobold] {{ label }} #[default] 
-{%- endmacro %}
-{% macro opened(key, label, color, subs) -%}
-#[bg=${{ color }},fg=$base,bold] {{ key }} {{ label }} #[bg=$surface0]{% for k, l in subs %}#[fg=${{ color }},bold] {{ k }} #[fg=$text,nobold]{{ l }} {% endfor %}#[default] 
-{%- endmacro %}
-{% set pairs = namespace(all=[]) %}
-{% for key, label, name, color in top %}{% set pairs.all = pairs.all + [(key, label)] %}{% endfor %}
-{% macro menu(mode, bindings) -%}
-{% for key, label, name, color in top -%}
-{% if name == mode -%}
-{% set subs = namespace(own=[]) -%}
-{% for k, l in bindings if l != 'Back' and (k, l) not in pairs.all %}{% set subs.own = subs.own + [(k, l)] %}{% endfor -%}
-{{ opened(key, label, color, subs.own) }}
-{%- elif (key, label) in bindings -%}
-{{ ribbon(key, label) }}
-{%- endif %}
-{%- endfor %}
+{# Only the active mode is shown: its ribbon first, in its own colour, then its keys. #}
+{% set top = {'pane': ('p', 'Pane', 'mauve'), 'tab': ('t', 'Tab', 'peach'), 'resize': ('r', 'Resize', 'yellow'), 'move': ('m', 'Move', 'pink'), 'scroll': ('s', 'Scroll', 'sky'), 'session': ('o', 'Session', 'green'), 'search': ('s', 'Find', 'teal'), 'normal': ('Esc', 'Normal', 'blue'), 'prompt': ('', 'Ask', 'lavender'), 'tmux': ('', 'Tmux', 'lavender')} %}
+{% macro menu(mode, subs) -%}
+{% set key, label, color = top[mode] -%}
+#[bg=${{ color }},fg=$base,bold] {{ (key ~ ' ') if key }}{{ label }} #[bg=$surface0]{% for k, l in subs %}#[fg=${{ color }},bold] {{ k }} #[fg=$text,nobold]{{ l }} {% endfor %}#[default] 
 {%- endmacro %}
 {% set lock = hint('Enter/Esc/Ctrl a', 'Lock') + hint('Ctrl q', 'Quit') %}
+{% set entries = [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')] %}
 {% set modes = {
-    'normal': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
-    'pane': [('h/j/k/l', 'New ←↓↑→'), ('s', 'Stack'), ('d', 'Close'), ('r', 'Rename'), ('f', 'Fullscreen'), ('w', 'Floating'), ('e', 'Embed/float'), ('i', 'Pin'), ('p', 'Back'), ('t', 'Tab'), ('m', 'Move'), ('o', 'Session')],
-    'tab': [('n', 'New'), ('h/l', 'Previous/next'), ('b', 'Break pane'), ('r', 'Rename'), ('s', 'Sync'), ('d', 'Close'), ('t', 'Back'), ('p', 'Pane'), ('m', 'Move'), ('o', 'Session')],
-    'resize': [('h/j/k/l', 'Grow ←↓↑→'), ('H/J/K/L', 'Shrink ←↓↑→'), ('r', 'Back'), ('p', 'Pane'), ('t', 'Tab'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
-    'move': [('h/j/k/l', 'Move ←↓↑→'), ('m', 'Back'), ('t', 'Tab'), ('r', 'Resize'), ('s', 'Scroll'), ('o', 'Session')],
-    'scroll': [('j/k', 'Down/up'), ('Ctrl d/u', 'Half page'), ('/', 'Search'), ('e', 'Edit'), ('s', 'Back'), ('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('o', 'Session')],
-    'search': [('n/N', 'Next/previous'), ('c', 'Case'), ('o', 'Whole word'), ('w', 'Wrap'), ('s', 'Scroll'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move')],
-    'session': [('f', 'Sessionizer'), ('m', 'Manager'), ('d', 'Detach'), ('p', 'Plugins'), ('s', 'Share'), ('a', 'About'), ('o', 'Back'), ('t', 'Tab'), ('r', 'Resize')],
-    'prompt': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')],
-    'tmux': [('p', 'Pane'), ('t', 'Tab'), ('r', 'Resize'), ('m', 'Move'), ('s', 'Scroll'), ('o', 'Session')]
+    'normal': entries,
+    'pane': [('h/j/k/l', 'New ←↓↑→'), ('s', 'Stack'), ('d', 'Close'), ('r', 'Rename'), ('f', 'Fullscreen'), ('w', 'Floating'), ('e', 'Embed/float'), ('i', 'Pin')],
+    'tab': [('n', 'New'), ('h/l', 'Previous/next'), ('b', 'Break pane'), ('r', 'Rename'), ('s', 'Sync'), ('d', 'Close')],
+    'resize': [('h/j/k/l', 'Grow ←↓↑→'), ('H/J/K/L', 'Shrink ←↓↑→')],
+    'move': [('h/j/k/l', 'Move ←↓↑→')],
+    'scroll': [('j/k', 'Down/up'), ('Ctrl d/u', 'Half page'), ('/', 'Search'), ('e', 'Edit')],
+    'search': [('n/N', 'Next/previous'), ('c', 'Case'), ('o', 'Whole word'), ('w', 'Wrap')],
+    'session': [('f', 'Sessionizer'), ('m', 'Manager'), ('d', 'Detach'), ('p', 'Plugins'), ('s', 'Share'), ('a', 'About')],
+    'prompt': entries,
+    'tmux': entries
 } %}
         mode_locked "{{ hint('Ctrl a', 'Unlock') }}"
 {% for mode, bindings in modes.items() %}
-        mode_{{ mode }} "{% if mode == 'search' %}{% for key, label in bindings %}{{ hint(key, label) }}{% endfor %}{% else %}{{ menu(mode, bindings) }}{% endif %}{{ lock }}"
+        mode_{{ mode }} "{{ menu(mode, bindings) }}{{ lock }}"
 {% endfor %}
-        mode_enter_search "{{ hint('Type', 'Search') }}{{ hint('Enter', 'Find') }}{{ hint('Esc/Ctrl c', 'Scroll') }}{{ hint('Ctrl a', 'Lock') }}{{ hint('Ctrl q', 'Quit') }}"
+        mode_enter_search "{{ menu('search', [('Type', 'Search'), ('Enter', 'Find'), ('Esc/Ctrl c', 'Scroll')]) }}{{ hint('Ctrl a', 'Lock') }}{{ hint('Ctrl q', 'Quit') }}"
 {% for mode, target in [('rename_tab', 'Tab'), ('rename_pane', 'Pane')] %}
-        mode_{{ mode }} "{{ hint('Type', 'Rename') }}{{ hint('Enter/Ctrl c', 'Finish + lock') }}{{ hint('Esc', 'Undo + ' + target) }}"
+        mode_{{ mode }} "{{ menu(target|lower, [('Type', 'Rename'), ('Enter/Ctrl c', 'Finish + lock'), ('Esc', 'Undo + ' + target)]) }}"
 {% endfor %}
     }
     about location="zellij:about"
