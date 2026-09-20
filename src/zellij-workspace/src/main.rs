@@ -499,6 +499,7 @@ impl State {
                     let index = self.repos.len();
                     self.features_added.push(repo.name.clone());
                     self.repos.push(repo);
+                    self.selected.remove(&self.feature_of);
                     self.selected.insert(index);
                     self.query.clear();
                     self.error = None;
