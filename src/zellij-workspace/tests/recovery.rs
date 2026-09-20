@@ -14,6 +14,7 @@ mod tests {
         let workspace = root.join("work space 'quoted'");
         let jj = |dir: &Path, args: &[&str]| -> Output {
             Command::new("jj")
+                .current_dir(dir)
                 .env("JJ_CONFIG", "")
                 .env("XDG_CONFIG_HOME", root.join("config"))
                 .args([
@@ -80,7 +81,13 @@ mod tests {
         }
         ok(jj(&workspace, &["status"]));
         assert_eq!(
-            std::fs::read_to_string(workspace.join("local.txt")).unwrap(),
+            String::from_utf8_lossy(
+                &jj(
+                    &workspace,
+                    &["file", "show", "-r", "divergent() ~ feature@", "local.txt"]
+                )
+                .stdout
+            ),
             "unsnapshotted work\n"
         );
         assert_eq!(
