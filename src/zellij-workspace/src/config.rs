@@ -13,7 +13,7 @@ pub struct Config {
     pub max_depth: usize,
     /// Where workspace sets live: `<workspaces_dir>/<set>/<project>`.
     pub workspaces_dir: String,
-    /// Layout file whose first `tab` becomes each project's tab. Optional.
+    /// Layout file whose non-`tab` nodes (e.g. tab templates) are kept. Optional.
     pub layout: String,
 }
 

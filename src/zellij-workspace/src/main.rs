@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use zellij_tile::prelude::*;
 
 use config::Config;
-use layout::{compose, Project, DEFAULT_TEMPLATE};
+use layout::{compose, tab_names, Project, DEFAULT_TEMPLATE, FILE_NAME as LAYOUT_FILE_NAME};
 use manifest::{Component, Manifest};
 use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
@@ -530,8 +530,27 @@ impl State {
         Component { name: repo.name.clone(), source: repo.source.clone() }
     }
 
+    /// Layout with two tabs for every project in the manifest.
+    fn layout_kdl(&self) -> Result<String, String> {
+        let projects: Vec<Project> = self
+            .manifest
+            .projects
+            .iter()
+            .map(|c| Project { name: c.name.clone(), dir: self.project_dir(&c.name) })
+            .collect();
+        compose(&self.template, &projects)
+    }
+
+    /// Saves `workspace.yaml` and the layout beside it, so both follow the members.
     fn save_manifest(&mut self) {
-        if let Err(err) = self.manifest.save(&self.config, Self::mount()) {
+        let layout_file = workspace_path(&self.config, &self.target, None).join(LAYOUT_FILE_NAME);
+        let result = self.manifest.save(&self.config, Self::mount()).and_then(|_| {
+            let kdl = self.layout_kdl()?;
+            mounted_path(Self::mount(), &layout_file)
+                .and_then(|file| std::fs::write(file, kdl))
+                .map_err(|e| format!("cannot write {LAYOUT_FILE_NAME}: {e}"))
+        });
+        if let Err(err) = result {
             self.failures.push(err);
         }
     }
@@ -550,7 +569,7 @@ impl State {
     }
 
     /// Runs the difference between what was on disk and what is now selected:
-    /// adds become `jj workspace add` (plus a tab), removals close the tab,
+    /// adds become `jj workspace add` (plus its tabs), removals close the tab,
     /// forget the workspace and delete its directory.
     fn apply(&mut self) -> bool {
         if self.selected.is_empty() {
@@ -602,7 +621,8 @@ impl State {
         for &i in self.initial.difference(&self.selected) {
             let repo = &self.repos[i];
             if sync {
-                self.tabs.iter().filter(|t| t.name == repo.name).for_each(|t| close_tab_with_id(t.tab_id as u64));
+                let names: Vec<String> = tab_names(&repo.name).collect();
+                self.tabs.iter().filter(|t| names.contains(&t.name)).for_each(|t| close_tab_with_id(t.tab_id as u64));
             }
             let args = ["sh", "-c", WORKSPACE_SCRIPT, "sh", "one"].map(String::from).into_iter().chain([
                 self.project_dir(&repo.name).to_string_lossy().into_owned(),
@@ -665,17 +685,13 @@ impl State {
     }
 
     /// All jobs are done: leave, or stay to show what failed. A set that is new
-    /// (or not running) also gets its session, with a tab per member.
+    /// (or not running) also gets its session, with the stored layout.
     fn finish(&mut self) {
         if !self.failures.is_empty() {
             return;
         }
         if !self.syncs_tabs() {
-            let projects: Vec<Project> = members(&self.config, Self::mount(), &self.target)
-                .into_iter()
-                .map(|name| Project { dir: self.project_dir(&name), name })
-                .collect();
-            match compose(&self.template, &projects) {
+            match self.layout_kdl() {
                 Ok(kdl) => switch_session_with_layout(
                     Some(&session_name(&self.target)),
                     LayoutInfo::Stringified(kdl),
