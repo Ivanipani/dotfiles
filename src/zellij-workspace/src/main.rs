@@ -75,6 +75,8 @@ struct State {
 
     /// The repo (index) a feature workspace is being named for.
     feature_of: usize,
+    /// Names added in the current feature prompt.
+    features_added: Vec<String>,
     /// The workspace set being created or edited.
     target: String,
     is_new: bool,
@@ -449,20 +451,25 @@ impl State {
             return true;
         }
         self.feature_of = m.index;
+        self.features_added.clear();
         self.name_input.clear();
         self.error = None;
         self.mode = Mode::Feature;
         true
     }
 
-    /// Adds, selected, another workspace of the same repository, named `<repo>-<feature>`.
+    fn end_features(&mut self) -> bool {
+        self.mode = Mode::Repos;
+        self.error = None;
+        true
+    }
+
+    /// Adds, selected, workspaces of the same repository named `<repo>-<feature>`,
+    /// one per line entered, until an empty line, esc or ctrl-d.
     fn handle_feature_key(&mut self, key: BareKey, ctrl: bool) -> bool {
         match key {
-            BareKey::Esc => {
-                self.mode = Mode::Repos;
-                self.error = None;
-                true
-            }
+            BareKey::Esc => self.end_features(),
+            BareKey::Char('d') if ctrl => self.end_features(),
             BareKey::Backspace => {
                 self.name_input.pop();
                 true
@@ -472,19 +479,20 @@ impl State {
                 let base = &self.repos[self.feature_of];
                 let name = format!("{}-{feature}", base.name);
                 if feature.is_empty() {
-                    self.error = Some("Enter a feature name.".into());
+                    return self.end_features();
                 } else if self.repos.iter().any(|r| r.name == name) {
                     self.error = Some(format!("'{name}' already exists."));
                 } else {
                     let repo = Repo { name, source: base.source.clone(), feature: Some(feature) };
                     let index = self.repos.len();
+                    self.features_added.push(repo.name.clone());
                     self.repos.push(repo);
                     self.selected.insert(index);
                     self.query.clear();
                     self.error = None;
                     self.refilter();
                     self.cursor = self.matches.iter().position(|m| m.index == index).unwrap_or(0);
-                    self.mode = Mode::Repos;
+                    self.name_input.clear();
                 }
                 true
             }
@@ -753,7 +761,8 @@ impl State {
         let repo = &self.repos[self.feature_of];
         let mut body = vec![String::new(), input("feature", 7, &self.name_input)];
         self.status_lines(&mut body);
-        let hints = [("⏎", "add"), ("esc", "back")];
+        body.extend(self.features_added.iter().map(|n| format!("{GREEN}[+] {n}{RESET}")));
+        let hints = [("⏎", "add"), ("⏎ empty", "done"), ("^d", "done"), ("esc", "done")];
         draw(&header(&format!("Feature workspace of {}", repo.name), "", cols), &body, &key_bar(&hints, cols), rows, cols);
     }
 
