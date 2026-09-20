@@ -318,9 +318,13 @@ plugins {
         format_space ""
         format_precedence "lrc"
         format_hide_on_overlength "true"
-        border_enabled "false"
+        // The top border doubles as a spacer, making the bar two rows tall.
+        border_enabled  "true"
+        border_char     "─"
+        border_format   "#[fg=$surface1]{char}"
+        border_position "top"
 {% macro hint(key, label) -%}
-#[bg=$surface1,fg=$blue,bold] {{ key }} #[bg=$surface0,fg=$text] {{ label }} #[default] 
+#[bg=$blue,fg=$base,bold] {{ key }} #[bg=$surface0,fg=$text,nobold] {{ label }} #[default]   
 {%- endmacro %}
 {% set lock = hint('Enter/Esc/Ctrl a', 'Lock') + hint('Ctrl q', 'Quit') %}
 {% set modes = {
