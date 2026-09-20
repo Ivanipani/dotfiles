@@ -1,5 +1,6 @@
 mod config;
 mod layout;
+mod manifest;
 mod repos;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -9,6 +10,7 @@ use zellij_tile::prelude::*;
 
 use config::Config;
 use layout::{compose, Project, DEFAULT_TEMPLATE};
+use manifest::{Component, Manifest};
 use repos::{list_workspaces, members, sanitize_name, scan_repos, workspace_path, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
 use zellij_common::list::{move_cursor, scroll_window};
@@ -81,6 +83,8 @@ struct State {
     tabs: Vec<TabInfo>,
 
     template: String,
+    /// The set's `workspace.yaml`, kept in step with the jobs of the last apply.
+    manifest: Manifest,
     pending: usize,
     failures: Vec<String>,
 
@@ -391,6 +395,16 @@ impl State {
         true
     }
 
+    fn component(&self, repo: &Repo) -> Component {
+        Component { name: repo.name.clone(), source: repo.source.clone() }
+    }
+
+    fn save_manifest(&mut self) {
+        if let Err(err) = self.manifest.save(&self.config, Self::mount()) {
+            self.failures.push(err);
+        }
+    }
+
     fn project_dir(&self, name: &str) -> PathBuf {
         workspace_path(&self.config, &self.target, Some(name))
     }
@@ -421,6 +435,19 @@ impl State {
         };
         self.failures.clear();
         self.error = None;
+
+        let mut manifest = Manifest::load(&self.config, Self::mount(), &self.target).unwrap_or_else(|| Manifest {
+            name: self.target.clone(),
+            projects: self.initial.iter().map(|&i| self.component(&self.repos[i])).collect(),
+        });
+        for &i in self.selected.difference(&self.initial) {
+            manifest.add(self.component(&self.repos[i]));
+        }
+        for &i in self.initial.difference(&self.selected) {
+            manifest.remove(&self.repos[i].name);
+        }
+        self.manifest = manifest;
+        self.save_manifest();
 
         let sync = self.syncs_tabs();
         let mut jobs: Vec<(Vec<String>, BTreeMap<String, String>)> = Vec::new();
@@ -487,6 +514,13 @@ impl State {
         } else {
             let detail = String::from_utf8_lossy(stderr);
             self.failures.push(format!("{op} {project}: {}", detail.trim()));
+            // The job did not happen, so the manifest must not claim it did.
+            if op == "add" {
+                self.manifest.remove(project);
+            } else if let Some(repo) = self.repos.iter().find(|r| &r.name == project) {
+                self.manifest.add(self.component(repo));
+            }
+            self.save_manifest();
         }
         self.pending = self.pending.saturating_sub(1);
         if self.pending == 0 {

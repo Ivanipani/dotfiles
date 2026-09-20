@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use zellij_common::host::{host_path, mounted_path};
 
 use crate::config::Config;
+use crate::manifest::Manifest;
 
 /// A project that can be a member of a workspace set.
 #[derive(Clone)]
@@ -105,7 +106,7 @@ fn subdirs(dir: &Path) -> Vec<String> {
     names
 }
 
-fn workspaces_root(config: &Config, mount: &Path) -> Option<PathBuf> {
+pub fn workspaces_root(config: &Config, mount: &Path) -> Option<PathBuf> {
     mounted_path(mount, Path::new(&config.workspaces_dir)).ok()
 }
 
@@ -114,8 +115,12 @@ pub fn list_workspaces(config: &Config, mount: &Path) -> Vec<String> {
     workspaces_root(config, mount).map(|root| subdirs(&root)).unwrap_or_default()
 }
 
-/// Project names inside the workspace set `workspace`.
+/// Project names in the workspace set `workspace`: its manifest's, else
+/// (for a set without one) the directories found on disk.
 pub fn members(config: &Config, mount: &Path, workspace: &str) -> Vec<String> {
+    if let Some(manifest) = Manifest::load(config, mount, workspace) {
+        return manifest.projects.into_iter().map(|c| c.name).collect();
+    }
     workspaces_root(config, mount).map(|root| subdirs(&root.join(workspace))).unwrap_or_default()
 }
 
