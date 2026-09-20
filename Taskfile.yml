@@ -2,7 +2,6 @@ version: '3'
 
 vars:
   PLUGINS: zellij-sessionizer zellij-workspace
-  PLUGIN_DIR: '{{.ROOT_DIR}}/configs/zellij/plugins'
   TARGET: wasm32-wasip1
 
 tasks:
@@ -29,24 +28,10 @@ tasks:
       - cargo build --release --target {{.TARGET}}
 
   deploy:
-    desc: Build the plugins and link them into configs/zellij/plugins
+    desc: Build the plugins and let dot link them into ~/.config/zellij/plugins
     cmds:
       - task: build
-      - for: {var: PLUGINS, split: ' '}
-        task: link-one
-        vars: {PLUGIN: '{{.ITEM}}'}
-
-  link-one:
-    internal: true
-    requires:
-      vars: [PLUGIN]
-    vars:
-      WASM: '{{.ROOT_DIR}}/src/{{.PLUGIN}}/target/{{.TARGET}}/release/{{.PLUGIN | replace "-" "_"}}.wasm'
-      LINK: '{{.PLUGIN_DIR}}/{{.PLUGIN}}.wasm'
-    status:
-      - test "$(readlink '{{.LINK}}')" = '{{.WASM}}'
-    cmds:
-      - ln -sfn '{{.WASM}}' '{{.LINK}}'
+      - dot apply zellij
 
   test:
     desc: Run the plugin crates' tests

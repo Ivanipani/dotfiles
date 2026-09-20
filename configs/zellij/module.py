@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dot import Action, Dir, Drift, Fetch, Module, Render, Run, Status, Symlink, cargo
+from dot import Action, Dir, Drift, Fetch, Module, Render, Status, Symlink, cargo
 
 # name, url, sha256, permissions the plugin asks for on load.
 #
@@ -162,26 +162,19 @@ class Zellij(Module):
         for layout in sorted(self.path("templates", "layouts").glob("*.kdl.j2")):
             yield Render(layout, cfg / "layouts" / layout.name.removesuffix(".j2"), mode="copy")
         yield Render(self.path("templates/workspace-tab.kdl.j2"), cfg / "workspace-tab.kdl", mode="copy")
-        # Checksums pin the exact plugin builds that are known to work here.
+        # A real directory of per-plugin links, so each is drift-checked on its
+        # own. Checksums pin the exact plugin builds that are known to work here.
+        yield Dir(cfg / "plugins")
         for name, url, digest, _ in PLUGINS:
             yield Fetch(url, self.path("plugins", f"{name}.wasm"), digest)
+            yield Symlink(self.path("plugins", f"{name}.wasm"), cfg / "plugins" / f"{name}.wasm")
 
-        # Local plugins are built rather than fetched. `unless` makes this a
-        # one-time build rather than a rebuild-on-every-apply: cargo's own
-        # incremental cache does the rest during development. Requires the
-        # wasm32-wasip1 rustup target (`rustup target add wasm32-wasip1`).
+        # Local plugins are built by `task build` (dot doesn't build Rust); link
+        # each once it exists so a fresh `apply` doesn't leave a dangling link.
         for name, _ in LOCAL_PLUGINS:
-            crate_dir = host.repo / "src" / name
-            built_wasm = crate_dir / "target" / "wasm32-wasip1" / "release" / f"{name.replace('-', '_')}.wasm"
-            yield Run(
-                ("cargo", "build", "--release", "--target", "wasm32-wasip1"),
-                unless=built_wasm,
-                cwd=crate_dir,
-                desc=f"cargo build {name} (wasm32-wasip1)",
-            )
-            yield Symlink(built_wasm, self.path("plugins", f"{name}.wasm"))
-
-        yield Symlink(self.path("plugins"), cfg / "plugins")
+            built_wasm = host.repo / "src" / name / "target" / "wasm32-wasip1" / "release" / f"{name.replace('-', '_')}.wasm"
+            if built_wasm.exists():
+                yield Symlink(built_wasm, cfg / "plugins" / f"{name}.wasm")
 
         cache = cache_dir(host)
         yield Dir(cache)
