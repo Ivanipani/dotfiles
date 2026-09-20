@@ -382,7 +382,7 @@ plugins {
     sessionizer location="file:{{ host.xdg_config }}/zellij/plugins/zellij-sessionizer.wasm" {
         roots "{{ home }}/github:{{ home }}"
         dirs "{{ home }}/dotfiles"
-        layout_dir "{{ host.xdg_config }}/zellij/layouts"
+        layout_dir "{{ host.repo }}/configs/zellij/layouts"
     }
     strider location="zellij:strider"
     tab-bar location="zellij:tab-bar"
