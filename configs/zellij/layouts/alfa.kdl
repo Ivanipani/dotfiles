@@ -14,12 +14,12 @@ layout {
     }
 
     tab name="editor" hide_floating_panes=true focus=true {
-        pane command="nvim" borderless=true {
+        pane command="nvim" {
             args "."
         }
     }
     tab name="claude" hide_floating_panes=true {
-        pane command="claude" borderless=true {
+        pane command="claude" {
             args "."
         }
     }

@@ -14,7 +14,7 @@ layout {
     }
 
     tab name="editor" hide_floating_panes=true focus=true {
-        pane command="nvim" borderless=true {
+        pane command="nvim" {
             args "."
         }
     }
