@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   PLUGINS: zellij-sessionizer zellij-workspace
+  CLIS: repo-sync
   TARGET: wasm32-wasip1
 
 tasks:
@@ -12,45 +13,29 @@ tasks:
       - task --list
 
   build:
-    desc: Build every cargo plugin (release, wasm)
-    cmds:
-      - for: {var: PLUGINS, split: ' '}
-        task: build-one
-        vars: {PLUGIN: '{{.ITEM}}'}
-
-  build-one:
-    internal: true
-    requires:
-      vars: [PLUGIN]
-    dir: '{{.ROOT_DIR}}/src/{{.PLUGIN}}'
+    desc: Build every Rust crate in release mode (wasm plugins and native CLIs)
     # No sources/generates: cargo's own incremental cache decides what to rebuild.
     cmds:
-      - cargo build --release --target {{.TARGET}}
+      - for: {var: PLUGINS, split: ' '}
+        cmd: cargo build --release --target {{.TARGET}} --manifest-path src/{{.ITEM}}/Cargo.toml
+      - for: {var: CLIS, split: ' '}
+        cmd: cargo build --release --manifest-path src/{{.ITEM}}/Cargo.toml
 
   deploy:
-    desc: Build the plugins and let dot link them into ~/.config/zellij/plugins
+    desc: Build everything and let dot link the results into place
     cmds:
       - task: build
-      - dot apply zellij
+      - dot apply tools zellij
 
   test:
-    desc: Run the plugin crates' tests
+    desc: Run every crate's tests
     cmds:
       - for: {var: PLUGINS, split: ' '}
+        cmd: cargo test --manifest-path src/{{.ITEM}}/Cargo.toml
+      - for: {var: CLIS, split: ' '}
         cmd: cargo test --manifest-path src/{{.ITEM}}/Cargo.toml
 
   repos:
     desc: Reconcile the repos in src/repo-sync/repos.yaml onto this machine
     cmds:
       - cargo run --release --manifest-path src/repo-sync/Cargo.toml -- src/repo-sync/repos.yaml
-
-  install-repo-sync:
-    desc: Build repo-sync and symlink it into ~/.local/bin (via dot)
-    cmds:
-      - cargo build --release --manifest-path src/repo-sync/Cargo.toml
-      - dot apply tools
-
-  test-repos:
-    desc: Run the repo-sync tests
-    cmds:
-      - cargo test --manifest-path src/repo-sync/Cargo.toml
