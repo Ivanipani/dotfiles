@@ -17,14 +17,28 @@ use zellij_common::fuzzy;
 
 /// `$1` source repository, `$2` workspace name, `$3` destination.
 const ADD_SCRIPT: &str = r#"mkdir -p "$(dirname "$3")" && jj -R "$1" workspace add --name "$2" "$3""#;
-/// `$1` the workspace directory. jj snapshots the working copy before
-/// forgetting, so uncommitted changes stay recoverable from the repository.
-const REMOVE_SCRIPT: &str = r#"jj -R "$1" workspace forget && rm -rf "$1""#;
-
-/// `$1` the workspace set directory. Aborts before deleting anything if a
-/// workspace cannot be forgotten (jj snapshots each one first).
-const DELETE_SCRIPT: &str =
-    r#"for d in "$1"/*/; do [ -d "$d" ] || continue; jj -R "$d" workspace forget || exit 1; done; rm -rf "$1""#;
+/// `$1` is `one` (`$2` a workspace directory) or `set` (`$2` a set directory
+/// of them). A workspace with uncommitted changes is first kept alive by a
+/// `saved-<set>` bookmark (suffixed `-2`, `-3`, … if taken); if that or the
+/// forget fails, nothing is deleted. Prints `saved <bookmark>` for each.
+const WORKSPACE_SCRIPT: &str = r#"
+forget() {
+  d=$1
+  if [ "$(jj -R "$d" log -r @ --no-graph -T empty)" = false ]; then
+    base=saved-$(basename "$(dirname "$d")"); name=$base; n=1
+    while [ -n "$(jj -R "$d" bookmark list -T 'name ++ "\n"' "exact:$name")" ]; do
+      n=$((n+1)); name=$base-$n
+    done
+    jj -R "$d" bookmark create "$name" -r @ >&2 || return 1
+    echo "saved $name in $(basename "$d")"
+  fi
+  jj -R "$d" workspace forget >&2
+}
+case $1 in
+  one) forget "$2" && rm -rf "$2" ;;
+  set) for d in "$2"/*/; do [ -d "$d" ] || continue; forget "$d" || exit 1; done; rm -rf "$2" ;;
+esac
+"#;
 /// `$1` the session name. Detached and delayed so it outlives, and runs after
 /// leaving, the session it removes.
 const KILL_SESSION_SCRIPT: &str = r#"(sleep 1; zellij delete-session --force "$1") >/dev/null 2>&1 &"#;
@@ -49,6 +63,8 @@ struct State {
     name_input: String,
     /// The workspace set awaiting delete confirmation.
     doomed: String,
+    /// Bookmarks created for unsaved changes by the last delete.
+    notes: Vec<String>,
 
     /// The workspace set being created or edited.
     target: String,
@@ -125,7 +141,7 @@ impl ZellijPlugin for State {
                 self.tabs = tabs;
                 false
             }
-            Event::RunCommandResult(code, _stdout, stderr, context) => self.job_finished(code, &stderr, &context),
+            Event::RunCommandResult(code, stdout, stderr, context) => self.job_finished(code, &stdout, &stderr, &context),
             Event::Key(key) if self.host_ready || matches!(key.bare_key, BareKey::Esc) => self.handle_key(key),
             _ => false,
         }
@@ -232,6 +248,7 @@ impl State {
             }
             BareKey::Char('d') => match self.home_cursor.checked_sub(1) {
                 Some(i) => {
+                    self.notes.clear();
                     self.doomed = self.workspaces[i].clone();
                     self.error = None;
                     self.mode = Mode::Confirm;
@@ -267,7 +284,7 @@ impl State {
             BareKey::Char('y') => {
                 let dir = workspace_path(&self.config, &self.doomed, None);
                 let context = BTreeMap::from([("op".to_string(), "delete".to_string())]);
-                run_command(&["sh", "-c", DELETE_SCRIPT, "sh", &dir.to_string_lossy()], context);
+                run_command(&["sh", "-c", WORKSPACE_SCRIPT, "sh", "set", &dir.to_string_lossy()], context);
                 self.pending = 1;
                 true
             }
@@ -426,7 +443,7 @@ impl State {
             if sync {
                 self.tabs.iter().filter(|t| t.name == repo.name).for_each(|t| close_tab_with_id(t.tab_id as u64));
             }
-            let args = ["sh", "-c", REMOVE_SCRIPT, "sh"].map(String::from).into_iter().chain([
+            let args = ["sh", "-c", WORKSPACE_SCRIPT, "sh", "one"].map(String::from).into_iter().chain([
                 self.project_dir(&repo.name).to_string_lossy().into_owned(),
             ]);
             jobs.push((args.collect(), job_context("remove", &repo.name)));
@@ -443,10 +460,11 @@ impl State {
         true
     }
 
-    fn job_finished(&mut self, code: Option<i32>, stderr: &[u8], context: &BTreeMap<String, String>) -> bool {
+    fn job_finished(&mut self, code: Option<i32>, stdout: &[u8], stderr: &[u8], context: &BTreeMap<String, String>) -> bool {
         if context.get("op").map(String::as_str) == Some("delete") {
             self.pending = 0;
             if code == Some(0) {
+                self.notes = String::from_utf8_lossy(stdout).lines().map(str::to_string).collect();
                 self.set_deleted();
             } else {
                 let detail = String::from_utf8_lossy(stderr);
@@ -521,12 +539,15 @@ impl State {
     fn render_home(&self, rows: usize, cols: usize) {
         println!("{BOLD}Workspaces{RESET} — ↑/↓ move, ⏎ open, d delete, esc quit");
         println!();
+        for note in &self.notes {
+            println!("{GREEN}{note}{RESET}");
+        }
         if self.render_status() {
             return;
         }
         let entries = std::iter::once("＋ new workspace".to_string()).chain(self.workspaces.iter().cloned());
         let entries: Vec<String> = entries.collect();
-        let window = scroll_window(self.home_cursor, entries.len(), rows.saturating_sub(3));
+        let window = scroll_window(self.home_cursor, entries.len(), rows.saturating_sub(3 + self.notes.len()));
         for i in window {
             let (glyph, color) = match i.checked_sub(1).map(|w| &self.workspaces[w]) {
                 None => ("  ", DIM),
@@ -543,6 +564,7 @@ impl State {
         println!("{BOLD}Delete '{}'?{RESET}", self.doomed);
         println!();
         println!("Forgets {count} jj workspace(s) and removes their directories.");
+        println!("Uncommitted changes are kept on a {BOLD}saved-{}{RESET} bookmark.", self.doomed);
         if self.current_session.as_deref() == Some(self.doomed.as_str()) {
             println!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}");
         } else if self.is_live(&self.doomed) {
