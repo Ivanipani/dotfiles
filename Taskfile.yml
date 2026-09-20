@@ -1,0 +1,54 @@
+version: '3'
+
+vars:
+  PLUGINS: zellij-sessionizer zellij-workspace
+  PLUGIN_DIR: '{{.ROOT_DIR}}/configs/zellij/plugins'
+  TARGET: wasm32-wasip1
+
+tasks:
+  default:
+    desc: Build and deploy the zellij plugins
+    cmds:
+      - task: deploy
+
+  build:
+    desc: Build every cargo plugin (release, wasm)
+    cmds:
+      - for: {var: PLUGINS, split: ' '}
+        task: build-one
+        vars: {PLUGIN: '{{.ITEM}}'}
+
+  build-one:
+    internal: true
+    requires:
+      vars: [PLUGIN]
+    dir: '{{.ROOT_DIR}}/src/{{.PLUGIN}}'
+    # No sources/generates: cargo's own incremental cache decides what to rebuild.
+    cmds:
+      - cargo build --release --target {{.TARGET}}
+
+  deploy:
+    desc: Build the plugins and link them into configs/zellij/plugins
+    cmds:
+      - task: build
+      - for: {var: PLUGINS, split: ' '}
+        task: link-one
+        vars: {PLUGIN: '{{.ITEM}}'}
+
+  link-one:
+    internal: true
+    requires:
+      vars: [PLUGIN]
+    vars:
+      WASM: '{{.ROOT_DIR}}/src/{{.PLUGIN}}/target/{{.TARGET}}/release/{{.PLUGIN | replace "-" "_"}}.wasm'
+      LINK: '{{.PLUGIN_DIR}}/{{.PLUGIN}}.wasm'
+    status:
+      - test "$(readlink '{{.LINK}}')" = '{{.WASM}}'
+    cmds:
+      - ln -sfn '{{.WASM}}' '{{.LINK}}'
+
+  test:
+    desc: Run the plugin crates' tests
+    cmds:
+      - for: {var: PLUGINS, split: ' '}
+        cmd: cargo test --manifest-path src/{{.ITEM}}/Cargo.toml
