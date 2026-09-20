@@ -124,6 +124,21 @@ pub fn members(config: &Config, mount: &Path, workspace: &str) -> Vec<String> {
     workspaces_root(config, mount).map(|root| subdirs(&root.join(workspace))).unwrap_or_default()
 }
 
+/// Members of `workspace` whose source repository is no longer a jujutsu
+/// repository. Empty for a set without a manifest (its sources are unknown).
+pub fn missing_sources(config: &Config, mount: &Path, workspace: &str) -> Vec<String> {
+    let Some(manifest) = Manifest::load(config, mount, workspace) else { return Vec::new() };
+    manifest
+        .projects
+        .into_iter()
+        .filter(|c| {
+            let repo = c.source.as_deref().and_then(|s| mounted_path(mount, s).ok());
+            !repo.is_some_and(|p| p.join(".jj").join("repo").is_dir())
+        })
+        .map(|c| c.name)
+        .collect()
+}
+
 /// Host path of a workspace set or, with `project`, of one workspace in it.
 pub fn workspace_path(config: &Config, workspace: &str, project: Option<&str>) -> PathBuf {
     let base = Path::new(&config.workspaces_dir).join(workspace);
@@ -176,6 +191,23 @@ mod tests {
         assert_eq!(names, ["a-dup", "b-dup", "multi", "one"]);
         assert_eq!(list_workspaces(&config, &mount), ["set"]);
         assert_eq!(members(&config, &mount, "set"), ["multi", "one"]);
+        std::fs::remove_dir_all(mount).unwrap();
+    }
+
+    #[test]
+    fn finds_members_with_missing_sources() {
+        use crate::manifest::Component;
+        let mount = std::env::temp_dir().join(format!("workspace-missing-{}", std::process::id()));
+        std::fs::create_dir_all(mount.join("src/kept/.jj/repo")).unwrap();
+        std::fs::create_dir_all(mount.join("ws")).unwrap();
+        let config = Config { workspaces_dir: "/ws".into(), ..Config::default() };
+        assert!(missing_sources(&config, &mount, "set").is_empty());
+        let mut manifest = Manifest { name: "set".into(), projects: Vec::new() };
+        manifest.add(Component { name: "kept".into(), source: Some("/src/kept".into()) });
+        manifest.add(Component { name: "gone".into(), source: Some("/src/gone".into()) });
+        manifest.add(Component { name: "unknown".into(), source: None });
+        manifest.save(&config, &mount).unwrap();
+        assert_eq!(missing_sources(&config, &mount, "set"), ["gone", "unknown"]);
         std::fs::remove_dir_all(mount).unwrap();
     }
 

@@ -11,7 +11,7 @@ use zellij_tile::prelude::*;
 use config::Config;
 use layout::{compose, Project, DEFAULT_TEMPLATE};
 use manifest::{Component, Manifest};
-use repos::{list_workspaces, members, sanitize_name, scan_repos, workspace_path, Repo};
+use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
 use zellij_common::list::{move_cursor, scroll_window};
 use zellij_common::ui::{body_height, draw, header, input, key_bar, render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
@@ -19,13 +19,14 @@ use zellij_common::fuzzy;
 
 /// `$1` source repository, `$2` workspace name, `$3` destination.
 const ADD_SCRIPT: &str = r#"mkdir -p "$(dirname "$3")" && jj -R "$1" workspace add --name "$2" "$3""#;
-/// `$1` is `one` (`$2` a workspace directory) or `set` (`$2` a set directory
-/// of them). A workspace with uncommitted changes is first kept alive by a
+/// `$1` is `one` (`$2` a workspace directory) or `set` (`$2…` set directories
+/// of them). A workspace whose source repository is gone is just deleted. A workspace with uncommitted changes is first kept alive by a
 /// `saved-<set>` bookmark (suffixed `-2`, `-3`, … if taken); if that or the
 /// forget fails, nothing is deleted. Prints `saved <bookmark>` for each.
 const WORKSPACE_SCRIPT: &str = r#"
 forget() {
   d=$1
+  jj -R "$d" log -r @ --no-graph -T empty >/dev/null 2>&1 || return 0
   if [ "$(jj -R "$d" log -r @ --no-graph -T empty)" = false ]; then
     base=saved-$(basename "$(dirname "$d")"); name=$base; n=1
     while [ -n "$(jj -R "$d" bookmark list -T 'name ++ "\n"' "exact:$name")" ]; do
@@ -38,7 +39,7 @@ forget() {
 }
 case $1 in
   one) forget "$2" && rm -rf "$2" ;;
-  set) for d in "$2"/*/; do [ -d "$d" ] || continue; forget "$d" || exit 1; done; rm -rf "$2" ;;
+  set) shift; for s; do for d in "$s"/*/; do [ -d "$d" ] || continue; forget "$d" || exit 1; done; rm -rf "$s"; done ;;
 esac
 "#;
 /// `$1` the session name. Detached and delayed so it outlives, and runs after
@@ -63,8 +64,10 @@ struct State {
     workspaces: Vec<String>,
     home_cursor: usize,
     name_input: String,
-    /// The workspace set awaiting delete confirmation.
-    doomed: String,
+    /// The workspace sets awaiting delete confirmation.
+    doomed: Vec<String>,
+    /// Why each stale workspace set is considered so.
+    stale: BTreeMap<String, String>,
     /// Bookmarks created for unsaved changes by the last delete.
     notes: Vec<String>,
 
@@ -79,6 +82,8 @@ struct State {
     cursor: usize,
 
     live_sessions: Vec<String>,
+    /// Sessions that exited but can still be resurrected.
+    resurrectable_sessions: Vec<String>,
     current_session: Option<String>,
     tabs: Vec<TabInfo>,
 
@@ -173,11 +178,31 @@ impl State {
     /// Refreshes everything the Home list shows.
     fn reload_home(&mut self) {
         self.workspaces = list_workspaces(&self.config, Self::mount());
-        if let Ok(snapshot) = get_session_list() {
-            self.current_session =
-                snapshot.live_sessions.iter().find(|s| s.is_current_session).map(|s| s.name.clone());
-            self.live_sessions = snapshot.live_sessions.into_iter().map(|s| s.name).collect();
-        }
+        let sessions_known = match get_session_list() {
+            Ok(snapshot) => {
+                self.current_session =
+                    snapshot.live_sessions.iter().find(|s| s.is_current_session).map(|s| s.name.clone());
+                self.live_sessions = snapshot.live_sessions.into_iter().map(|s| s.name).collect();
+                self.resurrectable_sessions = snapshot.resurrectable_sessions.into_iter().map(|(n, _)| n).collect();
+                true
+            }
+            Err(_) => false,
+        };
+        self.stale = self
+            .workspaces
+            .iter()
+            .filter_map(|set| {
+                let mut reasons = Vec::new();
+                if sessions_known && !self.has_session(set) {
+                    reasons.push("no session".to_string());
+                }
+                let missing = missing_sources(&self.config, Self::mount(), set);
+                if !missing.is_empty() {
+                    reasons.push(format!("source missing: {}", missing.join(", ")));
+                }
+                (!reasons.is_empty()).then(|| (set.clone(), reasons.join("; ")))
+            })
+            .collect();
         // Start on the workspace this session belongs to, else on "new".
         let current = self.workspaces.iter().position(|w| Some(w) == self.current_session.as_ref());
         self.home_cursor = current.map_or(0, |i| i + 1);
@@ -185,6 +210,11 @@ impl State {
 
     fn is_live(&self, name: &str) -> bool {
         self.live_sessions.iter().any(|s| s == name)
+    }
+
+    /// Whether `name` has a running or resurrectable session.
+    fn has_session(&self, name: &str) -> bool {
+        self.is_live(name) || self.resurrectable_sessions.iter().any(|s| s == name)
     }
 
     /// Whether tab changes for `target` should be made in this very session.
@@ -253,13 +283,19 @@ impl State {
             BareKey::Char('d') => match self.home_cursor.checked_sub(1) {
                 Some(i) => {
                     self.notes.clear();
-                    self.doomed = self.workspaces[i].clone();
-                    self.error = None;
-                    self.mode = Mode::Confirm;
+                    self.confirm_delete(vec![self.workspaces[i].clone()]);
                     true
                 }
                 None => false,
             },
+            BareKey::Char('c') => {
+                if self.stale.is_empty() {
+                    self.error = Some("No stale workspaces.".into());
+                } else {
+                    self.confirm_delete(self.stale.keys().cloned().collect());
+                }
+                true
+            }
             BareKey::Enter => {
                 self.error = None;
                 match self.home_cursor.checked_sub(1) {
@@ -283,12 +319,22 @@ impl State {
         }
     }
 
+    fn confirm_delete(&mut self, sets: Vec<String>) {
+        self.notes.clear();
+        self.doomed = sets;
+        self.error = None;
+        self.mode = Mode::Confirm;
+    }
+
     fn handle_confirm_key(&mut self, key: BareKey) -> bool {
         match key {
             BareKey::Char('y') => {
-                let dir = workspace_path(&self.config, &self.doomed, None);
+                let dirs: Vec<String> =
+                    self.doomed.iter().map(|d| workspace_path(&self.config, d, None).to_string_lossy().into_owned()).collect();
+                let mut args = vec!["sh", "-c", WORKSPACE_SCRIPT, "sh", "set"];
+                args.extend(dirs.iter().map(String::as_str));
                 let context = BTreeMap::from([("op".to_string(), "delete".to_string())]);
-                run_command(&["sh", "-c", WORKSPACE_SCRIPT, "sh", "set", &dir.to_string_lossy()], context);
+                run_command(&args, context);
                 self.pending = 1;
                 true
             }
@@ -300,15 +346,16 @@ impl State {
         }
     }
 
-    /// The set's directories are gone. Leave its session if we are in it, then
-    /// have it deleted (killed, if running) from outside.
-    fn set_deleted(&mut self) {
+    /// The sets' directories are gone. Leave the current session if it is one
+    /// of them, then have their sessions deleted (killed, if running) from outside.
+    fn sets_deleted(&mut self) {
         let doomed = self.doomed.clone();
-        if self.is_live(&doomed) || self.current_session.as_deref() == Some(doomed.as_str()) {
-            run_command(&["sh", "-c", KILL_SESSION_SCRIPT, "sh", &doomed], BTreeMap::new());
+        for set in doomed.iter().filter(|s| self.has_session(s)) {
+            run_command(&["sh", "-c", KILL_SESSION_SCRIPT, "sh", set], BTreeMap::new());
         }
-        if self.current_session.as_deref() == Some(doomed.as_str()) {
-            let other = self.live_sessions.iter().find(|s| **s != doomed).cloned();
+        let in_doomed = |s: &String| doomed.contains(s);
+        if self.current_session.as_ref().is_some_and(in_doomed) {
+            let other = self.live_sessions.iter().find(|s| !in_doomed(s)).cloned();
             switch_session(other.as_deref());
             close_self();
         } else {
@@ -492,10 +539,11 @@ impl State {
             self.pending = 0;
             if code == Some(0) {
                 self.notes = String::from_utf8_lossy(stdout).lines().map(str::to_string).collect();
-                self.set_deleted();
+                self.sets_deleted();
             } else {
                 let detail = String::from_utf8_lossy(stderr);
-                self.error = Some(format!("delete {}: {}", self.doomed, detail.trim()));
+                self.error = Some(format!("delete {}: {}", self.doomed.join(", "), detail.trim()));
+                self.reload_home();
                 self.mode = Mode::Home;
             }
             return true;
@@ -585,7 +633,8 @@ impl State {
                 } else {
                     ("  ", DIM, "")
                 };
-                entries.push((glyph, color, format!("{name:<width$}  {state}").trim_end().to_string()));
+                let stale = self.stale.get(name).map(|r| format!("  stale ({r})")).unwrap_or_default();
+                entries.push((glyph, color, format!("{name:<width$}  {state}{stale}").trim_end().to_string()));
             }
             entries[0].2 = format!("+ {}", entries[0].2);
             let window = scroll_window(self.home_cursor, entries.len(), body_height(rows).saturating_sub(body.len()));
@@ -594,29 +643,36 @@ impl State {
                 body.push(render_row(glyph, color, text, &[], i == self.home_cursor, cols));
             }
         }
-        let hints = [("↑↓", "move"), ("⏎", "open"), ("d", "delete"), ("^r", "refresh"), ("esc", "quit")];
-        let right = format!("{} sets", self.workspaces.len());
+        let hints = [("↑↓", "move"), ("⏎", "open"), ("d", "delete"), ("c", "clean stale"), ("^r", "refresh"), ("esc", "quit")];
+        let right = format!("{} sets · {} stale", self.workspaces.len(), self.stale.len());
         draw(&header("Workspaces", &right, cols), &body, &key_bar(&hints, cols), rows, cols);
     }
 
     fn render_confirm(&self, rows: usize, cols: usize) {
-        let count = members(&self.config, Self::mount(), &self.doomed).len();
+        let count: usize = self.doomed.iter().map(|d| members(&self.config, Self::mount(), d).len()).sum();
         let mut body = vec![
             String::new(),
             format!("Forgets {count} jj workspace(s) and removes their directories."),
-            format!("Uncommitted changes are kept on a {BOLD}saved-{}{RESET} bookmark.", self.doomed),
+            format!("Uncommitted changes are kept on a {BOLD}saved-<set>{RESET} bookmark."),
         ];
-        if self.current_session.as_deref() == Some(self.doomed.as_str()) {
-            body.push(format!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}"));
-        } else if self.is_live(&self.doomed) {
-            body.push(format!("{ORANGE}Its running session will be killed.{RESET}"));
+        if self.doomed.len() > 1 {
+            body.extend(self.doomed.iter().map(|d| format!("  {d}")));
         }
+        if self.current_session.as_ref().is_some_and(|c| self.doomed.contains(c)) {
+            body.push(format!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}"));
+        } else if self.doomed.iter().any(|d| self.is_live(d)) {
+            body.push(format!("{ORANGE}Running sessions will be killed.{RESET}"));
+        }
+        let title = match self.doomed.as_slice() {
+            [one] => format!("Delete '{one}'?"),
+            many => format!("Delete {} stale sets?", many.len()),
+        };
         let footer = if self.busy() {
             format!("{DIM}deleting…{RESET}")
         } else {
             key_bar(&[("y", "delete"), ("n", "cancel"), ("esc", "cancel")], cols)
         };
-        draw(&header(&format!("Delete '{}'?", self.doomed), "", cols), &body, &footer, rows, cols);
+        draw(&header(&title, "", cols), &body, &footer, rows, cols);
     }
 
     fn render_name(&self, rows: usize, cols: usize) {
