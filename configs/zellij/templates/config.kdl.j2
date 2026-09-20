@@ -259,9 +259,9 @@ plugins {
         // knowing a single hex code.
 {{ palette() }}
 
-        // Only the mode and the clock get a background; everything between them
-        // sits on the terminal's own, so the bar reads as part of the pane.
-        format_left   "{mode}#[bg=$surface0,fg=$text,bold] {session} #[fg=$surface0] {command_jj}"
+        // Mode and session are already on the key hints bar, so this one shows
+        // who and where. Only the identity and the clock get a background.
+        format_left   "{command_who} {command_jj}"
         format_center ""
         format_right  "{command_sys} #[fg=$surface0]{datetime}"
         format_space  ""
@@ -289,7 +289,7 @@ plugins {
         mode_tmux        "#[bg=$lavender,fg=$base,bold] TMUX #[bg=$surface0,fg=$lavender]"
 
         datetime          "#[bg=$surface0,fg=$subtext0] {format} "
-        datetime_format   "%a %d %b %H:%M"
+        datetime_format   "%a %d %b %H:%M:%S"
         // Without this zjstatus falls back to UTC rather than to the host zone.
         datetime_timezone "{{ v.zellij.timezone }}"
 
@@ -308,6 +308,13 @@ plugins {
         command_jj_rendermode "dynamic"
         // No output means no repo here — show nothing rather than an empty gap.
         command_jj_hideonemptystdout "true"
+
+        // Neither changes while the session lives, so run once (interval 0).
+        command_who_command  "{{ nu }} -n -c '$\"(whoami)@(^hostname -s)\"'"
+        command_who_env      "PATH \"{{ bin_path }}\""
+        command_who_format   "#[bg=$surface0,fg=$text,bold] {stdout} "
+        command_who_interval "0"
+        command_who_rendermode "dynamic"
 
         command_sys_command  "{{ nu }} -n {{ home }}/scripts/zjstatus-sys.nu"
         command_sys_env      "PATH \"{{ bin_path }}\""
