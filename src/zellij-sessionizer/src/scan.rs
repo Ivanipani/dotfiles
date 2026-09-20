@@ -114,37 +114,46 @@ pub struct LayoutOption {
 
 /// Ports `select_zellij_layout`: every `.kdl`/`.yaml`/`.yml` file directly
 /// under `layout_dir`, named by its stem, with "No layout" pinned first.
-pub fn scan_layouts(layout_dir: &str) -> Vec<LayoutOption> {
-    scan_layouts_at(layout_dir, Path::new(HOST_MOUNT))
+pub fn scan_layouts(layout_dir: &str) -> (Vec<LayoutOption>, Option<String>) {
+    scan_layouts_with_error(layout_dir, Path::new(HOST_MOUNT))
 }
 
 fn scan_layouts_at(layout_dir: &str, mount: &Path) -> Vec<LayoutOption> {
+    scan_layouts_with_error(layout_dir, mount).0
+}
+
+/// The list plus why it is short, when the directory could not be read or an
+/// entry could not be resolved.
+fn scan_layouts_with_error(layout_dir: &str, mount: &Path) -> (Vec<LayoutOption>, Option<String>) {
     let mut options = vec![LayoutOption { name: "No layout".to_string(), path: None }];
     if layout_dir.is_empty() {
-        return options;
+        return (options, Some("no layout_dir configured".to_string()));
     }
 
-    let mut found: Vec<PathBuf> = match mounted_path(mount, Path::new(layout_dir)).and_then(std::fs::read_dir) {
-        Ok(entries) => entries
-            .flatten()
-            .filter_map(|entry| mounted_path(mount, &host_path(mount, &entry.path())).ok())
-            .filter(|path| path.is_file())
-            .filter(|path| {
-                matches!(
-                    path.extension().and_then(|ext| ext.to_str()),
-                    Some("kdl" | "yaml" | "yml")
-                )
-            })
-            .collect(),
-        Err(_) => return options,
+    let entries = match mounted_path(mount, Path::new(layout_dir)).and_then(std::fs::read_dir) {
+        Ok(entries) => entries,
+        Err(err) => return (options, Some(format!("{layout_dir}: {err}"))),
     };
+    let mut error = None;
+    let mut found: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        match mounted_path(mount, &host_path(mount, &entry.path())) {
+            Ok(path) if path.is_file() => {
+                if matches!(path.extension().and_then(|ext| ext.to_str()), Some("kdl" | "yaml" | "yml")) {
+                    found.push(path);
+                }
+            }
+            Ok(_) => {}
+            Err(err) => error = Some(format!("{}: {err}", entry.path().display())),
+        }
+    }
     found.sort();
 
     for path in found {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
         options.push(LayoutOption { name, path: Some(host_path(mount, &path).display().to_string()) });
     }
-    options
+    (options, error)
 }
 
 #[cfg(test)]

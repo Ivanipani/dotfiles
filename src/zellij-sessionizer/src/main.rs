@@ -33,6 +33,7 @@ struct State {
     cursor: usize,
 
     layouts: Vec<LayoutOption>,
+    layout_error: Option<String>,
     layout_query: String,
     layout_matches: Vec<fuzzy::Match>,
     layout_cursor: usize,
@@ -108,7 +109,7 @@ impl State {
         if !self.host_ready {
             return;
         }
-        self.layouts = scan_layouts(&self.config.layout_dir);
+        (self.layouts, self.layout_error) = scan_layouts(&self.config.layout_dir);
         self.candidates = scan(&self.config);
         self.refilter();
     }
@@ -292,7 +293,10 @@ impl State {
     fn render_layouts(&self, rows: usize, cols: usize, session_name: &str) {
         println!("{}Layout for {session_name}{} — ↑/↓ move, ⏎ create, esc back", BOLD, RESET);
         println!("{}>{} {}█", BOLD, RESET, self.layout_query);
-        println!();
+        match &self.layout_error {
+            Some(error) => println!("{RED}{error}{RESET}"),
+            None => println!(),
+        }
 
         let list_height = rows.saturating_sub(4);
         let window = scroll_window(self.layout_cursor, self.layout_matches.len(), list_height);
