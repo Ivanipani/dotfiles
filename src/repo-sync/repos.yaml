@@ -1,6 +1,13 @@
 # Desired set of repos. `repo-sync repos.yaml` clones what is missing and
 # brings the rest to the intended state (colocated jj repo, `origin` = url).
-root: ~/projects
+root: ~/github
 repos:
-  # - url: https://github.com/owner/repo.git
-  #   name: repo   # optional; defaults to the URL's basename
+  - url: git@github.com:Ivanipani/resume-render.git
+  - url: git@github.com:Ivanipani/plans-on-tap.git
+  - url: git@github.com:Ivanipani/song-viewer.git
+  - url: git@github.com:Ivanipani/secret-santa.git
+  - url: git@github.com:Ivanipani/coop-appt.git
+  - url: git@github.com:Ivanipani/network-attack.git
+  - url: git@github.com:Ivanipani/pants-plugins.git
+  - url: git@github.com:Ivanipani/server-automation.git
+  - url: git@github.com:Ivanipani/doghouse.git
