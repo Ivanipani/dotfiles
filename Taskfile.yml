@@ -53,3 +53,13 @@ tasks:
     cmds:
       - for: {var: PLUGINS, split: ' '}
         cmd: cargo test --manifest-path src/{{.ITEM}}/Cargo.toml
+
+  repos:
+    desc: Reconcile the repos in src/repo-sync/repos.yaml onto this machine
+    cmds:
+      - cargo run --release --manifest-path src/repo-sync/Cargo.toml -- src/repo-sync/repos.yaml
+
+  test-repos:
+    desc: Run the repo-sync tests
+    cmds:
+      - cargo test --manifest-path src/repo-sync/Cargo.toml

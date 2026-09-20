@@ -1,0 +1,9 @@
+[package]
+name = "repo-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Reconcile a YAML list of repos to colocated jujutsu checkouts on this machine."
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_yaml_ng = "0.10.0"

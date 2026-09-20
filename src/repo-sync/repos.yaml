@@ -1,0 +1,6 @@
+# Desired set of repos. `repo-sync repos.yaml` clones what is missing and
+# brings the rest to the intended state (colocated jj repo, `origin` = url).
+root: ~/projects
+repos:
+  # - url: https://github.com/owner/repo.git
+  #   name: repo   # optional; defaults to the URL's basename

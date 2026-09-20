@@ -1,3 +1,0 @@
-# One repo URL per line; blank lines and # comments are ignored.
-# Clone directory is the URL's basename, under $PROJECTS_DIR (default ~/projects).
-# https://github.com/owner/repo.git
