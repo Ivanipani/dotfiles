@@ -52,6 +52,8 @@ enum Mode {
     Home,
     Name,
     Repos,
+    /// Naming an extra workspace of the repository under the cursor.
+    Feature,
     Confirm,
 }
 
@@ -71,6 +73,8 @@ struct State {
     /// Bookmarks created for unsaved changes by the last delete.
     notes: Vec<String>,
 
+    /// The repo (index) a feature workspace is being named for.
+    feature_of: usize,
     /// The workspace set being created or edited.
     target: String,
     is_new: bool,
@@ -161,6 +165,7 @@ impl ZellijPlugin for State {
             Mode::Home => self.render_home(rows, cols),
             Mode::Name => self.render_name(rows, cols),
             Mode::Repos => self.render_repos(rows, cols),
+            Mode::Feature => self.render_feature(rows, cols),
             Mode::Confirm => self.render_confirm(rows, cols),
         }
     }
@@ -225,9 +230,11 @@ impl State {
     fn enter_repos(&mut self, target: String, is_new: bool) {
         let mut repos = scan_repos(&self.config, Self::mount());
         let present = members(&self.config, Self::mount(), &target);
+        let manifest = Manifest::load(&self.config, Self::mount(), &target);
         for name in &present {
             if !repos.iter().any(|r| &r.name == name) {
-                repos.push(Repo { name: name.clone(), source: None });
+                let source = manifest.as_ref().and_then(|m| m.projects.iter().find(|c| &c.name == name)).and_then(|c| c.source.clone());
+                repos.push(Repo { name: name.clone(), source, feature: None });
             }
         }
         self.initial = repos.iter().enumerate().filter(|(_, r)| present.contains(&r.name)).map(|(i, _)| i).collect();
@@ -261,6 +268,7 @@ impl State {
             Mode::Home => self.handle_home_key(key.bare_key, ctrl),
             Mode::Name => self.handle_name_key(key.bare_key, ctrl),
             Mode::Repos => self.handle_repos_key(key.bare_key, ctrl),
+            Mode::Feature => self.handle_feature_key(key.bare_key, ctrl),
             Mode::Confirm => self.handle_confirm_key(key.bare_key),
         }
     }
@@ -417,6 +425,7 @@ impl State {
                 self.enter_repos(target, is_new);
                 true
             }
+            BareKey::Char('f') if ctrl => self.start_feature(),
             BareKey::Tab => self.toggle_current(),
             BareKey::Backspace => {
                 self.query.pop();
@@ -427,6 +436,61 @@ impl State {
             BareKey::Char(c) if !ctrl => {
                 self.query.push(c);
                 self.refilter();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn start_feature(&mut self) -> bool {
+        let Some(m) = self.matches.get(self.cursor) else { return false };
+        if self.repos[m.index].source.is_none() {
+            self.error = Some("Source repository not found.".into());
+            return true;
+        }
+        self.feature_of = m.index;
+        self.name_input.clear();
+        self.error = None;
+        self.mode = Mode::Feature;
+        true
+    }
+
+    /// Adds, selected, another workspace of the same repository, named `<repo>-<feature>`.
+    fn handle_feature_key(&mut self, key: BareKey, ctrl: bool) -> bool {
+        match key {
+            BareKey::Esc => {
+                self.mode = Mode::Repos;
+                self.error = None;
+                true
+            }
+            BareKey::Backspace => {
+                self.name_input.pop();
+                true
+            }
+            BareKey::Enter => {
+                let feature = sanitize_name(&self.name_input);
+                let base = &self.repos[self.feature_of];
+                let name = format!("{}-{feature}", base.name);
+                if feature.is_empty() {
+                    self.error = Some("Enter a feature name.".into());
+                } else if self.repos.iter().any(|r| r.name == name) {
+                    self.error = Some(format!("'{name}' already exists."));
+                } else {
+                    let repo = Repo { name, source: base.source.clone(), feature: Some(feature) };
+                    let index = self.repos.len();
+                    self.repos.push(repo);
+                    self.selected.insert(index);
+                    self.query.clear();
+                    self.error = None;
+                    self.refilter();
+                    self.cursor = self.matches.iter().position(|m| m.index == index).unwrap_or(0);
+                    self.mode = Mode::Repos;
+                }
+                true
+            }
+            BareKey::Char(c) if !ctrl => {
+                self.name_input.push(c);
+                self.error = None;
                 true
             }
             _ => false,
@@ -507,7 +571,10 @@ impl State {
             let Some(source) = &repo.source else { continue };
             let args = ["sh", "-c", ADD_SCRIPT, "sh"].map(String::from).into_iter().chain([
                 source.to_string_lossy().into_owned(),
-                self.target.clone(),
+                match &repo.feature {
+                    Some(feature) => format!("{}-{feature}", self.target),
+                    None => self.target.clone(),
+                },
                 self.project_dir(&repo.name).to_string_lossy().into_owned(),
             ]);
             jobs.push((args.collect(), job_context("add", &repo.name)));
@@ -682,6 +749,14 @@ impl State {
         draw(&header("New workspace", "", cols), &body, &key_bar(&hints, cols), rows, cols);
     }
 
+    fn render_feature(&self, rows: usize, cols: usize) {
+        let repo = &self.repos[self.feature_of];
+        let mut body = vec![String::new(), input("feature", 7, &self.name_input)];
+        self.status_lines(&mut body);
+        let hints = [("⏎", "add"), ("esc", "back")];
+        draw(&header(&format!("Feature workspace of {}", repo.name), "", cols), &body, &key_bar(&hints, cols), rows, cols);
+    }
+
     fn render_repos(&self, rows: usize, cols: usize) {
         let verb = if self.is_new { "create" } else { "apply" };
         let right = format!("{} selected · {}/{} shown", self.selected.len(), self.matches.len(), self.repos.len());
@@ -701,7 +776,7 @@ impl State {
         let hints = if self.busy() {
             vec![("^c", "close")]
         } else {
-            vec![("tab", "toggle"), ("⏎", verb), ("↑↓", "move"), ("^u", "clear"), ("^r", "rescan"), ("esc", "back")]
+            vec![("tab", "toggle"), ("^f", "feature"), ("⏎", verb), ("↑↓", "move"), ("^u", "clear"), ("^r", "rescan"), ("esc", "back")]
         };
         draw(&header(&self.target, &right, cols), &body, &key_bar(&hints, cols), rows, cols);
     }

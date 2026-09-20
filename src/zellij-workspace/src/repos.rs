@@ -14,6 +14,8 @@ pub struct Repo {
     /// Host path of the repository to add a workspace of; `None` for a member
     /// whose source repository is no longer found under the roots.
     pub source: Option<PathBuf>,
+    /// Set for an extra workspace of a repository, made in this session.
+    pub feature: Option<String>,
 }
 
 impl Repo {
@@ -46,7 +48,7 @@ pub fn scan_repos(config: &Config, mount: &Path) -> Vec<Repo> {
         .zip(&base_names)
         .map(|(source, name)| {
             let name = if counts[name.as_str()] > 1 { qualified_name(source) } else { name.clone() };
-            Repo { name, source: Some(source.clone()) }
+            Repo { name, source: Some(source.clone()), feature: None }
         })
         .collect()
 }
