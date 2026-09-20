@@ -7,9 +7,10 @@ vars:
 
 tasks:
   default:
-    desc: Build and deploy the zellij plugins
+    desc: List available tasks
+    silent: true
     cmds:
-      - task: deploy
+      - task --list
 
   build:
     desc: Build every cargo plugin (release, wasm)
