@@ -59,6 +59,12 @@ tasks:
     cmds:
       - cargo run --release --manifest-path src/repo-sync/Cargo.toml -- src/repo-sync/repos.yaml
 
+  install-repo-sync:
+    desc: Build repo-sync and symlink it into ~/.local/bin (via dot)
+    cmds:
+      - cargo build --release --manifest-path src/repo-sync/Cargo.toml
+      - dot apply tools
+
   test-repos:
     desc: Run the repo-sync tests
     cmds:

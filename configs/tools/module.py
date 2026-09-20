@@ -71,3 +71,8 @@ class Tools(Module):
         bindir = host.home / ".local" / "bin"
         yield Dir(bindir)
         yield Symlink(host.repo / "bin" / "dot", bindir / "dot")
+        # Built by `task install-repo-sync` (dot doesn't build Rust CLIs); link
+        # it once it exists so a fresh `apply` doesn't create a dangling link.
+        repo_sync = host.repo / "src" / "repo-sync" / "target" / "release" / "repo-sync"
+        if repo_sync.exists():
+            yield Symlink(repo_sync, bindir / "repo-sync")
