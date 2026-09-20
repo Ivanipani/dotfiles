@@ -406,7 +406,28 @@ web_client {
     font "monospace"
 }
  
-theme "catppuccin-frappe"
+// Frappé with a loud focused-pane frame: mauve on the active pane, muted on
+// the rest. Only frame_selected differs from the built-in catppuccin-frappe.
+themes {
+    frappe-bright {
+        text_unselected { base "#c6d0f5"; background "#303446"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        text_selected { base "#c6d0f5"; background "#51576d"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        ribbon_selected { base "#292c3c"; background "#a6d189"; emphasis_0 "#e78284"; emphasis_1 "#ef9f76"; emphasis_2 "#ca9ee6"; emphasis_3 "#8caaee"; }
+        ribbon_unselected { base "#292c3c"; background "#c6d0f5"; emphasis_0 "#e78284"; emphasis_1 "#c6d0f5"; emphasis_2 "#8caaee"; emphasis_3 "#ca9ee6"; }
+        table_title { base "#a6d189"; background "#303446"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        table_cell_selected { base "#c6d0f5"; background "#51576d"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        table_cell_unselected { base "#c6d0f5"; background "#303446"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        list_selected { base "#c6d0f5"; background "#51576d"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        list_unselected { base "#c6d0f5"; background "#303446"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#a6d189"; emphasis_3 "#ca9ee6"; }
+        frame_selected { base "#ca9ee6"; background "#303446"; emphasis_0 "#ef9f76"; emphasis_1 "#99d1db"; emphasis_2 "#ca9ee6"; emphasis_3 "#a6d189"; }
+        frame_highlight { base "#ef9f76"; background "#303446"; emphasis_0 "#ca9ee6"; emphasis_1 "#ef9f76"; emphasis_2 "#ef9f76"; emphasis_3 "#ef9f76"; }
+        exit_code_success { base "#a6d189"; background "#303446"; emphasis_0 "#99d1db"; emphasis_1 "#292c3c"; emphasis_2 "#ca9ee6"; emphasis_3 "#8caaee"; }
+        exit_code_error { base "#e78284"; background "#303446"; emphasis_0 "#e5c890"; emphasis_1 "#292c3c"; emphasis_2 "#ca9ee6"; emphasis_3 "#8caaee"; }
+        multiplayer_user_colors { player_1 "#ca9ee6"; player_2 "#8caaee"; player_3 "#303446"; player_4 "#e5c890"; player_5 "#99d1db"; player_6 "#303446"; player_7 "#e78284"; player_8 "#303446"; player_9 "#303446"; player_10 "#303446"; }
+    }
+}
+
+theme "frappe-bright"
 default_mode "locked"
 default_layout "default"
 layout_dir "{{ host.xdg_config }}/zellij/layouts"
