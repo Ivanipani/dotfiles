@@ -11,7 +11,7 @@ use zellij_tile::prelude::*;
 use config::Config;
 use layout::{compose, tab_names, Project, DEFAULT_TEMPLATE, FILE_NAME as LAYOUT_FILE_NAME};
 use manifest::{Component, Manifest};
-use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, Repo};
+use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, workspaces_root, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
 use zellij_common::list::{move_cursor, scroll_window};
 use zellij_common::ui::{body_height, draw, header, input, key_bar, render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
@@ -543,12 +543,11 @@ impl State {
 
     /// Saves `workspace.yaml` and the layout beside it, so both follow the members.
     fn save_manifest(&mut self) {
-        let layout_file = workspace_path(&self.config, &self.target, None).join(LAYOUT_FILE_NAME);
+        let layout_file = workspaces_root(&self.config, Self::mount()).map(|root| root.join(&self.target).join(LAYOUT_FILE_NAME));
         let result = self.manifest.save(&self.config, Self::mount()).and_then(|_| {
             let kdl = self.layout_kdl()?;
-            mounted_path(Self::mount(), &layout_file)
-                .and_then(|file| std::fs::write(file, kdl))
-                .map_err(|e| format!("cannot write {LAYOUT_FILE_NAME}: {e}"))
+            let file = layout_file.ok_or("workspaces_dir is not accessible")?;
+            std::fs::write(file, kdl).map_err(|e| format!("cannot write {LAYOUT_FILE_NAME}: {e}"))
         });
         if let Err(err) = result {
             self.failures.push(err);
