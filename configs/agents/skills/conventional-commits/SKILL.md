@@ -1,3 +1,8 @@
+---
+name: conventional-commits
+description: Write or review Conventional Commits messages for commit descriptions, including scopes, breaking changes, bodies, and footers.
+---
+
 # Conventional Commits Skill
 
 This skill provides guidance for writing commit messages following the Conventional Commits specification (v1.0.0). Use this when helping users write commit messages for Git or Jujutsu (jj) workflows.
@@ -115,20 +120,9 @@ This reverts commit abc1234.
 7. **Wrap body at 72 characters**
 8. **Reference issues in footers**: `Fixes #123` or `Closes #456`
 
-## Git Usage
-
-```bash
-# Simple commit
-git commit -m "feat: add user profile page"
-
-# Commit with body (use editor)
-git commit
-
-# Commit with body inline
-git commit -m "feat(auth): add password reset" -m "Implements the forgot password flow with email verification."
-```
-
 ## Jujutsu (jj) Usage
+
+Inspect the diff before composing a message. A request to draft a message does not itself request a commit. Prefer `-m` in non-interactive sessions; use an editor only when available.
 
 ```bash
 # Describe current change

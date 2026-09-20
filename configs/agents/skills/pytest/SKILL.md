@@ -1,6 +1,11 @@
+---
+name: pytest
+description: Write, review, or modify Python pytest tests using GIVEN/WHEN/THEN structure, focused assertions, fixtures, mocks, and containerized integration tests.
+---
+
 # Pytest High-Quality Tests Skill
 
-This skill provides standards and patterns for writing high-quality pytest tests. Apply these rules whenever writing, reviewing, or modifying tests.
+This skill provides standards and patterns for writing high-quality pytest tests. Apply these conventions when writing, reviewing, or modifying pytest tests, subject to the user's instructions and repository guidance.
 
 ## Core Principles
 

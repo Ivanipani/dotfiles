@@ -1,3 +1,8 @@
+---
+name: pex
+description: Build, run, inspect, or deploy Python PEX executables with the pex CLI or Pants, including runtime and container configuration.
+---
+
 # PEX Skill
 
 This skill provides expert guidance for working with PEX (Python EXecutable) files — self-contained, executable Python virtual environments packaged as zip archives. Use it when building, running, inspecting, or deploying PEX artifacts, whether via the `pex` CLI directly or through Pants.

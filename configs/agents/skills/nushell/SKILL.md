@@ -1,3 +1,8 @@
+---
+name: nushell
+description: Write, debug, or explain Nushell (.nu) scripts, modules, custom commands, and structured-data pipelines.
+---
+
 # Nushell Skill
 
 This skill provides guidance for using Nushell (`nu`) both as an interactive shell and as a programming language. Use it when writing `.nu` scripts, modules, custom commands, or pipelines, or when answering questions about Nushell syntax and idioms.
