@@ -1,5 +1,6 @@
 return { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
+    branch = 'master', -- This configuration uses the legacy modules API.
     dependencies = {
         -- 'nvim-treesitter/nvim-treesitter-textobjects', -- Additional text objects
         'nvim-treesitter/nvim-treesitter-context', -- Show context of code
@@ -7,6 +8,10 @@ return { -- Highlight, edit, and navigate code
     },
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
+    config = function(_, opts)
+        require('config.treesitter-compat')()
+        require('nvim-treesitter.configs').setup(opts)
+    end,
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
         ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc', 'rust', 'toml', 'python' },
