@@ -14,11 +14,13 @@ macro_rules! live_fn {
 }
 
 /// Background creation is not idempotent in Zellij; check for a running session first.
+/// Inside a session, `--layout-string` adds tabs to the current session instead of
+/// creating a new one, so the session variables are cleared.
 pub const ENSURE: &str = concat!(live_fn!(), r#"
 if live "$1"; then
   exit 0
 fi
-zellij --layout-string "$2" attach --create-background "$1" || exit 1
+env -u ZELLIJ -u ZELLIJ_SESSION_NAME -u ZELLIJ_PANE_ID zellij --layout-string "$2" attach --create-background "$1" || exit 1
 "#);
 
 /// Read both snapshots from the target session, never the manager's session.
