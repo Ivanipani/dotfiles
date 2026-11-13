@@ -1,12 +1,13 @@
-source $ZPLUG_HOME/init.zsh
+# Vendored in configs/zsh/plugins (linked to $XDG_CONFIG_HOME/zsh/plugins).
+_dot_plugins="$XDG_CONFIG_HOME/zsh/plugins"
 
-zplug "themes/gnzh", from:oh-my-zsh, as:theme
-zplug "zsh-users/zsh-autosuggestions"
-zplug "zsh-users/zsh-syntax-highlighting", defer:2
-zplug "jeffreytse/zsh-vi-mode"
+# zplug used to run this; plugins and later fragments call compdef.
+autoload -Uz compinit && compinit
 
-if ! zplug check; then
-  zplug install
-fi
+source "$_dot_plugins/themes/gnzh.zsh-theme"
+source "$_dot_plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh"
+source "$_dot_plugins/zsh-vi-mode/zsh-vi-mode.plugin.zsh"
+# Must load last so it wraps every widget defined above.
+source "$_dot_plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh"
 
-zplug load
+unset _dot_plugins

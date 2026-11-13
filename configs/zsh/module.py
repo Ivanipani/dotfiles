@@ -1,4 +1,4 @@
-from dot import Dir, Module, Render, Run, Symlink, brew
+from dot import Dir, Module, Render, Symlink
 
 
 class Zsh(Module):
@@ -7,10 +7,6 @@ class Zsh(Module):
     # Nothing depends on zsh, but its fragments reference tools the other
     # modules put in place, so it reads better applied last.
     after = ("claude", "codex", "nushell", "nvim", "term", "tools", "vcs", "zellij")
-
-    def packages(self, host):
-        if host.macos:
-            yield brew("zplug")
 
     def plan(self, host):
         zdir = host.xdg_config / "zsh"
@@ -26,6 +22,9 @@ class Zsh(Module):
         for fragment in sorted(self.path("common").glob("*.zsh")):
             yield Symlink(fragment, zdir / fragment.name)
 
+        # Vendored plugins and theme, linked as one tree.
+        yield Symlink(self.path("plugins"), zdir / "plugins")
+
         yield Dir(host.xdg_config / "atuin")
         yield Symlink(self.path("atuin.toml"), host.xdg_config / "atuin" / "config.toml")
         yield Symlink(self.path("starship.toml"), host.xdg_config / "starship.toml")
@@ -33,12 +32,3 @@ class Zsh(Module):
         yield Dir(host.home / "scripts")
         for script in sorted(p for p in self.path("scripts").iterdir() if p.is_file()):
             yield Symlink(script, host.home / "scripts" / script.name)
-
-        if host.linux:
-            # zplug ships via brew on macOS; Linux clones it.
-            zplug = host.home / ".zplug"
-            yield Run(
-                ("git", "clone", "https://github.com/zplug/zplug", str(zplug)),
-                unless=zplug,
-                desc="clone zplug",
-            )

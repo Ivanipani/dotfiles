@@ -17,9 +17,6 @@ platform_aliases = [
 [git]
 credential_helper = "cache"
 
-[zsh]
-zplug_home = "$HOME/.zplug"
-
 [nushell]
 editor_aliases = true
 clipboard = "^xclip -selection clipboard"

@@ -26,9 +26,6 @@ platform_aliases = []
 [git]
 credential_helper = "osxkeychain"
 
-[zsh]
-zplug_home = "/opt/homebrew/opt/zplug"
-
 [nushell]
 editor_aliases = false
 clipboard = "^pbcopy"
