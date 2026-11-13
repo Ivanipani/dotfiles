@@ -4,21 +4,31 @@ use std::path::Path;
 use kdl::KdlDocument;
 use serde::Deserialize;
 
+/// `zellij --session` exits 0 and lists sessions on stdout when the session is missing,
+/// so liveness must come from `list-sessions`.
+macro_rules! live_fn {
+    () => {
+        r#"live() { zellij list-sessions --no-formatting | awk -v s="$1" '$1 == s && !/EXITED/ { found = 1 } END { exit !found }'; }
+"#
+    };
+}
+
 /// Background creation is not idempotent in Zellij; check for a running session first.
-pub const ENSURE: &str = r#"
-if zellij --session "$1" action list-tabs --json >/dev/null 2>&1; then
+pub const ENSURE: &str = concat!(live_fn!(), r#"
+if live "$1"; then
   exit 0
 fi
 zellij --layout-string "$2" attach --create-background "$1" || exit 1
-"#;
+"#);
 
 /// Read both snapshots from the target session, never the manager's session.
-pub const INSPECT: &str = r#"
+pub const INSPECT: &str = concat!(live_fn!(), r#"
+live "$1" || { echo "session $1 is not running" >&2; exit 1; }
 sleep 0.1
 zellij --session "$1" action list-tabs --json || exit 1
 printf '\n---WORKSPACE-LAYOUT---\n'
 zellij --session "$1" action dump-layout
-"#;
+"#);
 
 /// Add first so replacing every project cannot close the session's last tab.
 pub const SYNC: &str = r#"
