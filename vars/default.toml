@@ -29,6 +29,28 @@ platform_aliases = []
 [git]
 credential_helper = ""
 
+[agents]
+# Command prefixes auto-approved in both Claude (permissions.allow) and Codex
+# (rules/dot.rules). One token list per command.
+allowed_commands = [
+    ["jj", "status"],
+    ["jj", "diff"],
+    ["jj", "log"],
+    ["jj", "show"],
+    ["jj", "describe"],
+    ["jj", "commit"],
+    ["jj", "squash"],
+    ["jj", "bookmark"],
+    ["dot", "status"],
+    ["dot", "diff"],
+    ["dot", "doctor"],
+    ["dot", "apply"],
+    ["task"],
+    ["cargo", "build"],
+    ["cargo", "check"],
+    ["cargo", "test"],
+]
+
 [claude]
 # Claude Code writes its auto-mode block itself, and it names whatever repo it
 # was pointed at — internal hosts, secret paths. This repo is public, so the

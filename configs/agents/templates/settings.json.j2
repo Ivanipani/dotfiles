@@ -1,6 +1,11 @@
 {
   "permissions": {
-    "defaultMode": "auto"
+    "defaultMode": "auto",
+    "allow": [
+{% for cmd in v.agents.allowed_commands %}
+      "Bash({{ cmd | join(' ') }} *)"{{ "," if not loop.last }}
+{% endfor %}
+    ]
   },
   "enabledPlugins": {
     "lua-lsp@claude-plugins-official": true,

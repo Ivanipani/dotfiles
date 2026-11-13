@@ -39,3 +39,5 @@ class Codex(Module):
             root / "hooks.json",
             extra={"client": "codex"},
         )
+        # Separate file: Codex appends its own approvals to default.rules.
+        yield Render(self.path("templates/codex.rules.j2"), root / "rules" / "dot.rules")
