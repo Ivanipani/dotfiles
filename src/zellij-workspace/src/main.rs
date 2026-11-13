@@ -700,7 +700,7 @@ impl State {
         Component { name: repo.name.clone(), source: repo.source.clone() }
     }
 
-    /// Layout with two tabs for every project in the manifest.
+    /// Layout with a workspace root tab and one tab per project in the manifest.
     fn layout_kdl(&self) -> Result<String, String> {
         let projects: Vec<Project> = self
             .manifest
@@ -708,7 +708,8 @@ impl State {
             .iter()
             .map(|c| Project { name: c.name.clone(), dir: self.project_dir(&c.name) })
             .collect();
-        compose(&self.template, &projects)
+        let root = Project { name: self.target.clone(), dir: workspace_path(&self.config, &self.target, None) };
+        compose(&self.template, &root, &projects)
     }
 
     /// Saves `workspace.yaml` and the layout beside it, so both follow the members.

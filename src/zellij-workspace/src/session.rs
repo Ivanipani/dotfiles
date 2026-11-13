@@ -123,12 +123,13 @@ layout {
     tab name="notes" { pane cwd="/elsewhere"; }
 }
 "#;
-        let desired = crate::layout::compose(crate::layout::DEFAULT_TEMPLATE, &[
+        let root = crate::layout::Project { name: "reek".into(), dir: "/work/reek".into() };
+        let desired = crate::layout::compose(crate::layout::DEFAULT_TEMPLATE, &root, &[
             crate::layout::Project { name: "kept".into(), dir: "/work/reek/kept".into() },
         ]).unwrap();
         let plan = plan(snapshot, &desired, Path::new("/work/reek")).unwrap();
         assert_eq!(plan.close, [4, 9]);
-        assert!(plan.layout.contains("name=\"kept jj\""));
+        assert!(plan.layout.contains("name=\"reek\""));
         assert!(!plan.layout.contains("name=\"kept\""));
     }
 
