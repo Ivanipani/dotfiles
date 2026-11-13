@@ -49,6 +49,9 @@ allowed_commands = [
     ["cargo", "build"],
     ["cargo", "check"],
     ["cargo", "test"],
+    ["reek"],
+    ["ansible"],
+    ["k3s", "kubectl"],
 ]
 
 [claude]
