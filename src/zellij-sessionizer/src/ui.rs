@@ -12,7 +12,7 @@ pub fn bullet(status: RowStatus) -> (&'static str, &'static str) {
     match status {
         RowStatus::Current => ("◉ ", GREEN),
         RowStatus::Active => ("● ", ORANGE),
-        RowStatus::Inactive => ("  ", DIM),
+        RowStatus::Inactive => ("○ ", DIM),
     }
 }
 

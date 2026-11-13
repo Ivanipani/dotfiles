@@ -17,7 +17,7 @@ pub fn render_row(glyph: &str, color: &str, text: &str, char_indices: &[usize], 
     let truncated = truncate(text, width.saturating_sub(glyph.chars().count()));
 
     if selected {
-        return format!("{REVERSE}{glyph}{truncated}{RESET}");
+        return format!("{color}{REVERSE}{glyph}{truncated}{}{RESET}", " ".repeat(width.saturating_sub(glyph.chars().count() + truncated.chars().count())));
     }
 
     let highlighted = highlight(&truncated, char_indices);
@@ -64,23 +64,30 @@ pub fn body_height(rows: usize) -> usize {
 
 /// A bold `title` on the left and dim `right` text flush against the right edge.
 pub fn header(title: &str, right: &str, width: usize) -> String {
-    let gap = width.saturating_sub(title.chars().count() + right.chars().count()).max(1);
-    format!("{BOLD}{title}{RESET}{}{DIM}{right}{RESET}", " ".repeat(gap))
+    let title = truncate(title, width);
+    let remaining = width.saturating_sub(title.chars().count() + 1);
+    let right = truncate(right, remaining);
+    let gap = width.saturating_sub(title.chars().count() + right.chars().count());
+    format!("{CYAN}{BOLD}{title}{RESET}{}{DIM}{right}{RESET}", " ".repeat(gap))
 }
 
-/// Footer of keybinding chips (`key`, description); hints that don't fit are dropped.
+/// Footer of keybinding chips, wrapped so shortcuts remain discoverable.
 pub fn key_bar(hints: &[(&str, &str)], width: usize) -> String {
     let mut out = String::new();
     let mut used = 0;
     for (key, desc) in hints {
         let chip = key.chars().count() + 2 + 1 + desc.chars().count();
         let gap = if out.is_empty() { 0 } else { 2 };
-        if used + gap + chip > width {
-            break;
-        }
+        let gap = if used > 0 && used + gap + chip > width {
+            out.push('\n');
+            used = 0;
+            0
+        } else { gap };
         out.push_str(&" ".repeat(gap));
-        out.push_str(&format!("{REVERSE} {key} {RESET} {desc}"));
-        used += gap + chip;
+        let key = truncate(key, width.saturating_sub(2));
+        let desc = truncate(desc, width.saturating_sub(key.chars().count() + 3));
+        out.push_str(&format!("{CYAN}{REVERSE} {key} {RESET} {desc}"));
+        used += gap + key.chars().count() + 3 + desc.chars().count();
     }
     out
 }
@@ -92,7 +99,7 @@ pub fn input(label: &str, label_width: usize, text: &str) -> String {
 
 /// Draws header, rule, `body` (padded to fill the screen) and a footer pinned to the last row.
 pub fn draw(header: &str, body: &[String], footer: &str, rows: usize, cols: usize) {
-    let height = body_height(rows);
+    let height = body_height(rows).saturating_sub(footer.lines().count().saturating_sub(1));
     println!("{header}");
     println!("{DIM}{}{RESET}", "─".repeat(cols));
     for line in body.iter().take(height) {
@@ -102,4 +109,18 @@ pub fn draw(header: &str, body: &[String], footer: &str, rows: usize, cols: usiz
         println!();
     }
     print!("{footer}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn footer_wraps_without_losing_actions() {
+        let bar = key_bar(&[("enter", "open"), ("esc", "back"), ("^r", "refresh")], 16);
+        assert_eq!(bar.lines().count(), 3);
+        for action in ["open", "back", "refresh"] {
+            assert!(bar.contains(action));
+        }
+    }
 }

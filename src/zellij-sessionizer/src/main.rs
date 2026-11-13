@@ -10,7 +10,7 @@ use config::Config;
 use scan::{scan, scan_layouts, Candidate, LayoutOption};
 use ui::RowStatus;
 use zellij_common::list::{move_cursor, scroll_window};
-use zellij_common::{fuzzy, ui::{BOLD, DIM, RED, RESET}};
+use zellij_common::{fuzzy, ui::{body_height, draw, header, input, key_bar, DIM, RED, RESET}};
 
 #[derive(Default)]
 enum Mode {
@@ -121,6 +121,7 @@ impl State {
                     snapshot.live_sessions.iter().find(|s| s.is_current_session).map(|s| s.name.clone());
                 self.live_sessions = snapshot.live_sessions.into_iter().map(|s| s.name).collect();
                 self.error = None;
+                self.refilter();
             }
             Err(err) => self.error = Some(err),
         }
@@ -129,6 +130,14 @@ impl State {
     fn refilter(&mut self) {
         let haystacks: Vec<String> = self.candidates.iter().map(|c| c.display.clone()).collect();
         self.matches = fuzzy::filter_sort(&haystacks, &self.query);
+        if self.query.is_empty() {
+            let current = &self.current_session;
+            let live = &self.live_sessions;
+            self.matches.sort_by_key(|m| {
+                let name = &self.candidates[m.index].session_name;
+                (current.as_ref() != Some(name), !live.contains(name))
+            });
+        }
         self.cursor = 0;
     }
 
@@ -259,51 +268,72 @@ impl State {
     }
 
     fn render_directories(&self, rows: usize, cols: usize) {
-        println!("{}Sessionizer{} — type to filter, ↑/↓ move, ⏎ select, esc quit", BOLD, RESET);
-        println!("{}>{} {}█", BOLD, RESET, self.query);
-        println!();
-
+        let action = self.matches.get(self.cursor).map(|m| {
+            if self.row_status(&self.candidates[m.index].session_name) == RowStatus::Inactive {
+                "choose layout"
+            } else { "switch" }
+        }).unwrap_or("open");
+        let footer = key_bar(&[("⏎", action), ("↑↓", "move"), ("esc", "quit"), ("^u", "clear"), ("^r", "rescan")], cols);
+        let mut body = vec![input("search", 6, &self.query), format!("{DIM}◉ current · ● running · ○ inactive | active first{RESET}")];
         if let Some(err) = &self.error {
-            println!("{}{err}{}", RED, RESET);
-            return;
+            body.push(format!("{RED}{err}{RESET}"));
+        } else if !self.permissions_granted {
+            body.push(format!("{DIM}waiting for permissions…{RESET}"));
+        } else if !self.host_ready {
+            body.push(format!("{DIM}waiting for host filesystem…{RESET}"));
+        } else if self.candidates.is_empty() {
+            body.push(format!("{DIM}no project directories found under the configured roots{RESET}"));
+        } else if self.matches.is_empty() {
+            body.push(format!("{DIM}No matching projects. Ctrl-u clears the search.{RESET}"));
+        } else {
+            let height = body_height(rows).saturating_sub(footer.lines().count().saturating_sub(1) + body.len());
+            let window = scroll_window(self.cursor, self.matches.len(), height);
+            for (row, m) in self.matches.iter().enumerate().skip(window.start).take(window.len()) {
+                let candidate = &self.candidates[m.index];
+                body.push(ui::render_row(&candidate.display, &m.char_indices, self.row_status(&candidate.session_name), row == self.cursor, cols));
+            }
         }
-        if !self.permissions_granted {
-            println!("{}waiting for permissions…{}", DIM, RESET);
-            return;
-        }
-        if !self.host_ready {
-            println!("{}waiting for host filesystem…{}", DIM, RESET);
-            return;
-        }
-        if self.candidates.is_empty() {
-            println!("{}no project directories found under the configured roots{}", DIM, RESET);
-            return;
-        }
-
-        let list_height = rows.saturating_sub(4);
-        let window = scroll_window(self.cursor, self.matches.len(), list_height);
-        for (row, m) in self.matches.iter().enumerate().skip(window.start).take(window.len()) {
-            let candidate = &self.candidates[m.index];
-            let status = self.row_status(&candidate.session_name);
-            let selected = row == self.cursor;
-            println!("{}", ui::render_row(&candidate.display, &m.char_indices, status, selected, cols));
-        }
+        let right = format!("{}/{} projects", self.matches.len(), self.candidates.len());
+        draw(&header("Sessionizer", &right, cols), &body, &footer, rows, cols);
     }
 
     fn render_layouts(&self, rows: usize, cols: usize, session_name: &str) {
-        println!("{}Layout for {session_name}{} — ↑/↓ move, ⏎ create, esc back", BOLD, RESET);
-        println!("{}>{} {}█", BOLD, RESET, self.layout_query);
-        match &self.layout_error {
-            Some(error) => println!("{RED}{error}{RESET}"),
-            None => println!(),
+        let footer = key_bar(&[("⏎", "create session"), ("↑↓", "move"), ("esc", "back")], cols);
+        let mut body = vec![input("search", 6, &self.layout_query)];
+        if let Some(error) = &self.layout_error {
+            body.push(format!("{RED}{error}{RESET}"));
         }
-
-        let list_height = rows.saturating_sub(4);
-        let window = scroll_window(self.layout_cursor, self.layout_matches.len(), list_height);
+        if self.layout_matches.is_empty() {
+            body.push(format!("{DIM}No matching layouts. Backspace to edit the search.{RESET}"));
+        }
+        let height = body_height(rows).saturating_sub(footer.lines().count().saturating_sub(1) + body.len());
+        let window = scroll_window(self.layout_cursor, self.layout_matches.len(), height);
         for (row, m) in self.layout_matches.iter().enumerate().skip(window.start).take(window.len()) {
-            let layout = &self.layouts[m.index];
-            let selected = row == self.layout_cursor;
-            println!("{}", ui::render_row(&layout.name, &m.char_indices, RowStatus::Inactive, selected, cols));
+            body.push(ui::render_row(&self.layouts[m.index].name, &m.char_indices, RowStatus::Inactive, row == self.layout_cursor, cols));
         }
+        draw(&header("Choose layout", session_name, cols), &body, &footer, rows, cols);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activity_orders_browsing_but_search_keeps_best_match_first() {
+        let mut state = State {
+            candidates: ["alpha", "beta", "gamma"].into_iter().map(|name| Candidate {
+                display: name.into(), session_name: name.into(),
+            }).collect(),
+            current_session: Some("gamma".into()),
+            live_sessions: vec!["beta".into(), "gamma".into()],
+            ..State::default()
+        };
+        state.refilter();
+        assert_eq!(state.matches.iter().map(|m| m.index).collect::<Vec<_>>(), vec![2, 1, 0]);
+        state.query = "alpha".into();
+        state.refilter();
+        assert_eq!(state.matches.len(), 1);
+        assert_eq!(state.matches[0].index, 0);
     }
 }

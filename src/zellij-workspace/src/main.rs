@@ -218,6 +218,9 @@ impl State {
                 (!reasons.is_empty()).then(|| (set.clone(), reasons.join("; ")))
             })
             .collect();
+        let mut workspaces = std::mem::take(&mut self.workspaces);
+        workspaces.sort_by_key(|name| (!self.is_current(name), !self.is_live(name), !self.has_session(name), name.clone()));
+        self.workspaces = workspaces;
         // Start on the workspace this session belongs to, else on "new".
         let current = self.workspaces.iter().position(|w| self.is_current(w));
         self.home_cursor = current.map_or(0, |i| i + 1);
@@ -268,6 +271,9 @@ impl State {
     fn refilter(&mut self) {
         let haystacks: Vec<String> = self.repos.iter().map(Repo::label).collect();
         self.matches = fuzzy::filter_sort(&haystacks, &self.query);
+        if self.query.is_empty() {
+            self.matches.sort_by_key(|m| !self.initial.contains(&m.index));
+        }
         self.cursor = 0;
     }
 
@@ -758,32 +764,36 @@ impl State {
     }
 
     fn render_home(&self, rows: usize, cols: usize) {
+        let hints = [("↑↓", "move"), ("⏎", "open"), ("d", "delete"), ("c", "clean stale"), ("^r", "refresh"), ("esc", "quit")];
+        let footer = key_bar(&hints, cols);
+        let list_rows = rows.saturating_sub(footer.lines().count().saturating_sub(1));
         let mut body: Vec<String> = self.notes.iter().map(|n| format!("{GREEN}{n}{RESET}")).collect();
         let ready = !self.status_lines(&mut body);
         if ready {
             let width = self.workspaces.iter().map(|w| w.chars().count()).max().unwrap_or(0);
             let mut entries = vec![("  ", DIM, "new workspace".to_string())];
             for name in &self.workspaces {
-                let (glyph, color, state) = if self.current_session.as_deref() == Some(name.as_str()) {
+                let (glyph, color, state) = if self.is_current(name) {
                     ("◉ ", GREEN, "current")
                 } else if self.is_live(name) {
                     ("● ", ORANGE, "running")
+                } else if self.has_session(name) {
+                    ("○ ", DIM, "saved")
                 } else {
-                    ("  ", DIM, "")
+                    ("· ", DIM, "inactive")
                 };
                 let stale = self.stale.get(name).map(|r| format!("  stale ({r})")).unwrap_or_default();
                 entries.push((glyph, color, format!("{name:<width$}  {state}{stale}").trim_end().to_string()));
             }
             entries[0].2 = format!("+ {}", entries[0].2);
-            let window = scroll_window(self.home_cursor, entries.len(), body_height(rows).saturating_sub(body.len()));
+            let window = scroll_window(self.home_cursor, entries.len(), body_height(list_rows).saturating_sub(body.len()));
             for i in window {
                 let (glyph, color, text) = &entries[i];
                 body.push(render_row(glyph, color, text, &[], i == self.home_cursor, cols));
             }
         }
-        let hints = [("↑↓", "move"), ("⏎", "open"), ("d", "delete"), ("c", "clean stale"), ("^r", "refresh"), ("esc", "quit")];
         let right = format!("{} sets · {} stale", self.workspaces.len(), self.stale.len());
-        draw(&header("Workspaces", &right, cols), &body, &key_bar(&hints, cols), rows, cols);
+        draw(&header("Workspaces", &right, cols), &body, &footer, rows, cols);
     }
 
     fn render_confirm(&self, rows: usize, cols: usize) {
@@ -796,7 +806,7 @@ impl State {
         if self.doomed.len() > 1 {
             body.extend(self.doomed.iter().map(|d| format!("  {d}")));
         }
-        if self.current_session.as_ref().is_some_and(|c| self.doomed.contains(c)) {
+        if self.doomed.iter().any(|name| self.is_current(name)) {
             body.push(format!("{ORANGE}This is the current session: you will be switched away and it will be killed.{RESET}"));
         } else if self.doomed.iter().any(|d| self.is_live(d)) {
             body.push(format!("{ORANGE}Running sessions will be killed.{RESET}"));
@@ -831,6 +841,12 @@ impl State {
 
     fn render_repos(&self, rows: usize, cols: usize) {
         let verb = if self.is_new { "create" } else { "apply" };
+        let hints = if self.busy() {
+            vec![("^c", "close")]
+        } else {
+            vec![("tab", "toggle"), ("^f", "feature"), ("⏎", verb), ("↑↓", "move"), ("^u", "clear"), ("^r", "rescan"), ("esc", "back")]
+        };
+        let footer = key_bar(&hints, cols);
         let right = format!("{} selected · {}/{} shown", self.selected.len(), self.matches.len(), self.repos.len());
         let mut body = vec![input("filter", 6, &self.query)];
         body.push(format!("{GREEN}[+] add{RESET}  {RED}[-] remove{RESET}  {ORANGE}[x] kept{RESET}  {DIM}[ ] not in set{RESET}"));
@@ -842,15 +858,10 @@ impl State {
             } else if self.repos.is_empty() {
                 body.push(format!("{DIM}no jujutsu repositories found under the configured roots{RESET}"));
             } else {
-                self.repo_rows(&mut body, rows, cols);
+                self.repo_rows(&mut body, rows.saturating_sub(footer.lines().count().saturating_sub(1)), cols);
             }
         }
-        let hints = if self.busy() {
-            vec![("^c", "close")]
-        } else {
-            vec![("tab", "toggle"), ("^f", "feature"), ("⏎", verb), ("↑↓", "move"), ("^u", "clear"), ("^r", "rescan"), ("esc", "back")]
-        };
-        draw(&header(&self.target, &right, cols), &body, &key_bar(&hints, cols), rows, cols);
+        draw(&header(&self.target, &right, cols), &body, &footer, rows, cols);
     }
 
     /// Appends the matching repos as a name column followed by the source path.
