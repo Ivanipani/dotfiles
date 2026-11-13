@@ -15,6 +15,7 @@ from dot.packages import (
     apt,
     brew,
     cargo,
+    cask,
     github,
     install,
     probe,
@@ -229,3 +230,26 @@ def test_a_release_reinstalls_when_the_tag_moves(host, tmp_path):
 
     _stub(pkg.dest / "tool", "tool 1.2.2")
     assert not pkg.installed()
+
+
+# --------------------------------------------------------------------------- #
+# Casks installed outside brew
+
+
+def test_cask_is_installed_when_its_app_is_in_applications(tmp_path, monkeypatch):
+    # GIVEN an app bundle in /Applications and no binary on PATH
+    (tmp_path / "Tool.app").mkdir()
+    monkeypatch.setattr("dot.packages.APPLICATIONS", tmp_path)
+    monkeypatch.setenv("PATH", "")
+
+    # WHEN/THEN the cask counts as installed
+    assert cask("tool", app="Tool").installed()
+
+
+def test_cask_is_not_installed_when_its_app_is_missing(tmp_path, monkeypatch):
+    # GIVEN an empty /Applications and no binary on PATH
+    monkeypatch.setattr("dot.packages.APPLICATIONS", tmp_path)
+    monkeypatch.setenv("PATH", "")
+
+    # WHEN/THEN the cask is not installed
+    assert not cask("tool", app="Tool").installed()

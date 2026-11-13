@@ -68,10 +68,12 @@ zsh	render	render main.zsh.j2 -> $HOME/.zshrc (symlink)
 zsh	render	render 01-env.zsh.j2 -> $HOME/.config/zsh/01-env.zsh (symlink)
 zsh	render	render 07-platform.zsh.j2 -> $HOME/.config/zsh/07-platform.zsh (symlink)
 zsh	symlink	ln -s $REPO/configs/zsh/common/02-aliases.zsh $HOME/.config/zsh/02-aliases.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/03-compinit.zsh $HOME/.config/zsh/03-compinit.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/common/03-functions.zsh $HOME/.config/zsh/03-functions.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/common/04-integrations.zsh $HOME/.config/zsh/04-integrations.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/common/05-options.zsh $HOME/.config/zsh/05-options.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/common/06-plugins.zsh $HOME/.config/zsh/06-plugins.zsh
+zsh	symlink	ln -s $REPO/configs/zsh/common/06-prompt-info.zsh $HOME/.config/zsh/06-prompt-info.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/plugins $HOME/.config/zsh/plugins
 zsh	dir	mkdir -p $HOME/.config/atuin
 zsh	symlink	ln -s $REPO/configs/zsh/atuin.toml $HOME/.config/atuin/config.toml

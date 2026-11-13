@@ -32,6 +32,9 @@ PINS: dict[str, Callable[[str, str], list[str]]] = {
     "uv": lambda name, version: [f"{name}=={version}"],
 }
 
+# Where macOS apps land; a cask whose app is here counts as installed.
+APPLICATIONS = Path("/Applications")
+
 # The first dotted number a `--version` banner prints, tag noise and all.
 VERSION = re.compile(r"\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.]+)?")
 
@@ -76,6 +79,7 @@ class Package:
     args: tuple[str, ...] = ()
     bin: str | None = None
     version: str | None = None
+    app: str | None = None
 
     @property
     def provides(self) -> str:
@@ -116,6 +120,8 @@ class Package:
         return got is None or satisfies(got, self.version)
 
     def installed(self) -> bool:
+        if self.app and (APPLICATIONS / f"{self.app}.app").exists():
+            return True
         found = shutil.which(self.provides)
         return found is not None and self.current(found)
 
@@ -127,8 +133,10 @@ def brew(name: str, bin: str | None = None, *, version: str | None = None) -> Pa
     return Package("brew", name, bin=bin, version=version)
 
 
-def cask(name: str, bin: str | None = None, *, version: str | None = None) -> Package:
-    return Package("cask", name, bin=bin, version=version)
+def cask(
+    name: str, bin: str | None = None, *, app: str | None = None, version: str | None = None
+) -> Package:
+    return Package("cask", name, bin=bin, version=version, app=app)
 
 
 def apt(name: str, bin: str | None = None, *, version: str | None = None) -> Package:

@@ -10,7 +10,7 @@ class Term(Module):
 
     def packages(self, host):
         yield cask("wezterm")
-        yield cask("ghostty")
+        yield cask("ghostty", app="Ghostty")
         yield brew("font-inconsolata-nerd-font")
 
     def plan(self, host):
