@@ -16,11 +16,6 @@ pub struct Project {
 /// Per project: a tab and the command it runs in the project root.
 const TABS: [(&str, &str); 2] = [("", "pane command=\"nvim\" {\n args \".\"\n}"), (" jj", "pane command=\"jjui\"")];
 
-/// Names of the tabs `compose` creates for a project.
-pub fn tab_names(project: &str) -> impl Iterator<Item = String> + '_ {
-    TABS.iter().map(move |(suffix, _)| format!("{project}{suffix}"))
-}
-
 /// Builds a zellij layout with two tabs per project: `nvim .` and `jjui`, both
 /// in the project root. Every node under the template's `layout` (tab templates
 /// and the like) is kept once; the template's own `tab` nodes are dropped. Only
