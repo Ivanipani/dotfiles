@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -131,25 +133,53 @@ def test_install_dry_run_prints_commands_without_running_them(run):
     assert "brew install" in result.output or "cargo install" in result.output
 
 
-def test_doctor_reports_pinned_against_found(run, monkeypatch):
-    """`tools` pins the scie-pants tag, so doctor must hold `pants` to it."""
+PINNED = {"tilt": "0.37.7", "jjui": "0.10.9"}
+
+
+def _probe_pinned(versions):
+    return lambda binary: versions.get(Path(binary).name)
+
+
+def test_doctor_passes_when_pinned_binaries_match(run, fake_env, monkeypatch):
+    # GIVEN a linux host, where tilt and jjui are pinned, and matching installed versions
+    fake_env["DOT_OS"] = "linux"
     monkeypatch.setattr("dot.cli.shutil.which", lambda binary: f"/fake/bin/{binary}")
+    monkeypatch.setattr("dot.cli.probe", _probe_pinned(PINNED))
 
-    monkeypatch.setattr("dot.cli.probe", lambda _binary: "0.13.2")
-    ok = run("doctor", "tools")
-    assert ok.exit_code == 0
-    assert "0.13.2" in ok.output
+    # WHEN doctor checks the tools module
+    result = run("doctor", "tools")
 
-    monkeypatch.setattr("dot.cli.probe", lambda _binary: "0.0.1")
-    drifted = run("doctor", "tools")
-    assert drifted.exit_code == 1
-    assert "1 outdated" in drifted.output
+    # THEN it succeeds and shows the pinned version
+    assert result.exit_code == 0
+    assert "0.37.7" in result.output
 
 
-def test_doctor_leaves_unpinned_binaries_unprobed(run, monkeypatch):
+def test_doctor_fails_when_pinned_binary_has_drifted(run, fake_env, monkeypatch):
+    # GIVEN a linux host where tilt is installed at the wrong version
+    fake_env["DOT_OS"] = "linux"
+    monkeypatch.setattr("dot.cli.shutil.which", lambda binary: f"/fake/bin/{binary}")
+    monkeypatch.setattr("dot.cli.probe", _probe_pinned({**PINNED, "tilt": "0.0.1"}))
+
+    # WHEN doctor checks the tools module
+    result = run("doctor", "tools")
+
+    # THEN it reports exactly one outdated binary
+    assert result.exit_code == 1
+    assert "1 outdated" in result.output
+
+
+def test_doctor_leaves_unpinned_binaries_unprobed(run, fake_env, monkeypatch):
+    # GIVEN a linux host where only tilt and jjui are pinned
+    fake_env["DOT_OS"] = "linux"
     monkeypatch.setattr("dot.cli.shutil.which", lambda binary: f"/fake/bin/{binary}")
     probed: list[str] = []
-    monkeypatch.setattr("dot.cli.probe", lambda binary: probed.append(binary) or "0.13.2")
+    monkeypatch.setattr(
+        "dot.cli.probe", lambda binary: probed.append(Path(binary).name) or PINNED[Path(binary).name]
+    )
 
-    assert run("doctor", "tools").exit_code == 0
-    assert probed == ["/fake/bin/pants"]
+    # WHEN doctor checks the tools module
+    result = run("doctor", "tools")
+
+    # THEN only the pinned binaries are probed
+    assert result.exit_code == 0
+    assert sorted(probed) == ["jjui", "tilt"]

@@ -1,7 +1,6 @@
 from dot import Dir, Module, Symlink, brew, cargo, github
 
 TILT = "v0.37.7"
-PANTS = "v0.13.2"  # scie-pants launcher; each repo pins its own pants version
 JJUI = "v0.10.9"
 
 
@@ -18,7 +17,6 @@ class Tools(Module):
         "just",
         "direnv",
         "tilt",
-        "pants",
         "jjui",
     )
 
@@ -56,14 +54,6 @@ class Tools(Module):
             )
         yield cargo("ripgrep", bin="rg")
         yield cargo("fd-find", bin="fd")
-        # No package manager ships the pants launcher; it is a bare release binary.
-        yield github(
-            "pantsbuild/scie-pants",
-            PANTS,
-            f"scie-pants-{'macos' if host.macos else 'linux'}-{{arch}}",
-            host=host,
-            bin="pants",
-        )
 
     def plan(self, host):
         # The CLI installs itself, so a fresh machine only needs `uv` and
