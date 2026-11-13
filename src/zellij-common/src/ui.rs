@@ -124,3 +124,28 @@ mod tests {
         }
     }
 }
+
+/// Adds a discoverable help shortcut to a screen's normal actions.
+pub fn help_key_bar(hints: &[(&str, &str)], width: usize) -> String {
+    let mut hints = hints.to_vec();
+    hints.push(("F1", "help"));
+    key_bar(&hints, width)
+}
+
+/// Contextual help; empty keys denote section headings. Wrap before scrolling.
+pub fn draw_help(title: &str, entries: &[(&str, &str)], offset: &mut usize, rows: usize, cols: usize) {
+    let footer = key_bar(&[("Esc/F1", "back"), ("↑↓", "scroll")], cols);
+    let height = body_height(rows).saturating_sub(footer.lines().count().saturating_sub(1));
+    let mut body = Vec::new();
+    for (key, description) in entries {
+        let text = if key.is_empty() { description.to_string() } else { format!("  {key}  {description}") };
+        let chars: Vec<char> = text.chars().collect();
+        for chunk in chars.chunks(cols.max(1)) {
+            let line: String = chunk.iter().collect();
+            body.push(if key.is_empty() { format!("{CYAN}{BOLD}{line}{RESET}") } else { line });
+        }
+    }
+    *offset = (*offset).min(body.len().saturating_sub(height.max(1)));
+    let right = format!("{}–{} / {}", *offset + 1, (*offset + height).min(body.len()), body.len());
+    draw(&header(title, &right, cols), &body[*offset..], &footer, rows, cols);
+}

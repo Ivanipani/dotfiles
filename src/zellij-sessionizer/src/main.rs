@@ -10,7 +10,7 @@ use config::Config;
 use scan::{scan, scan_layouts, Candidate, LayoutOption};
 use ui::RowStatus;
 use zellij_common::list::{move_cursor, scroll_window};
-use zellij_common::{fuzzy, ui::{body_height, draw, header, input, key_bar, DIM, RED, RESET}};
+use zellij_common::{fuzzy, ui::{body_height, draw, header, input, help_key_bar as key_bar, draw_help, DIM, RED, RESET}};
 
 #[derive(Default)]
 enum Mode {
@@ -26,6 +26,7 @@ enum Mode {
 struct State {
     config: Config,
     mode: Mode,
+    help_scroll: Option<usize>,
 
     candidates: Vec<Candidate>,
     query: String,
@@ -94,6 +95,10 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        if self.help_scroll.is_some() {
+            self.render_help(rows, cols);
+            return;
+        }
         match &self.mode {
             Mode::Directories => self.render_directories(rows, cols),
             Mode::Layout { session_name, .. } => {
@@ -105,6 +110,39 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    fn render_help(&mut self, rows: usize, cols: usize) {
+        let mut entries = vec![
+            ("", "Navigation"),
+            ("↑/↓ or Ctrl-k/j", "Move through results"),
+            ("F1", "Open or close this help"),
+            ("Ctrl-c", "Close the plugin (outside help)"),
+            ("", "Search"),
+            ("Type", "Fuzzy-filter the list"),
+            ("Backspace", "Remove the last search character"),
+        ];
+        let title = match self.mode {
+            Mode::Directories => {
+                entries.extend([
+                    ("Ctrl-u", "Clear the search"),
+                    ("Ctrl-r", "Rescan projects, layouts and sessions"),
+                    ("", "Open a project"),
+                    ("Enter", "Switch to a running session, otherwise choose a layout"),
+                    ("Esc", "Close the plugin"),
+                ]);
+                "Help · Projects"
+            }
+            Mode::Layout { .. } => {
+                entries.extend([
+                    ("", "Create a session"),
+                    ("Enter", "Create the session with the selected layout"),
+                    ("Esc", "Return to projects"),
+                ]);
+                "Help · Layouts"
+            }
+        };
+        draw_help(title, &entries, self.help_scroll.as_mut().unwrap(), rows, cols);
+    }
+
     fn rescan(&mut self) {
         if !self.host_ready {
             return;
@@ -158,6 +196,19 @@ impl State {
     }
 
     fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        if key.bare_key == BareKey::F(1) {
+            self.help_scroll = if self.help_scroll.is_some() { None } else { Some(0) };
+            return true;
+        }
+        if let Some(offset) = &mut self.help_scroll {
+            match key.bare_key {
+                BareKey::Esc => self.help_scroll = None,
+                BareKey::Down => *offset = offset.saturating_add(1),
+                BareKey::Up => *offset = offset.saturating_sub(1),
+                _ => {},
+            }
+            return true;
+        }
         let ctrl = key.key_modifiers.contains(&KeyModifier::Ctrl);
         match &self.mode {
             Mode::Directories => match key.bare_key {
@@ -335,5 +386,34 @@ mod tests {
         state.refilter();
         assert_eq!(state.matches.len(), 1);
         assert_eq!(state.matches[0].index, 0);
+    }
+}
+
+#[cfg(test)]
+mod help_tests {
+    use super::*;
+
+    #[test]
+    fn help_preserves_search_and_selection_and_consumes_actions() {
+        let mut state = State {
+            mode: Mode::Directories,
+            query: "project".into(),
+            cursor: 3,
+            ..State::default()
+        };
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        assert_eq!(state.help_scroll, Some(0));
+        for key in [BareKey::Char('d'), BareKey::Tab, BareKey::Enter, BareKey::Backspace, BareKey::Down] {
+            state.handle_key(KeyWithModifier::new(key));
+        }
+        assert_eq!(state.help_scroll, Some(1));
+        state.handle_key(KeyWithModifier::new(BareKey::Esc));
+        assert_eq!(state.help_scroll, None);
+        assert_eq!(state.query, "project");
+        assert_eq!(state.cursor, 3);
+        assert!(matches!(state.mode, Mode::Directories));
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        assert_eq!(state.help_scroll, None);
     }
 }

@@ -16,7 +16,7 @@ use manifest::{Component, Manifest};
 use repos::{list_workspaces, members, missing_sources, sanitize_name, scan_repos, workspace_path, workspaces_root, Repo};
 use zellij_common::host::{mounted_path, HOST_MOUNT};
 use zellij_common::list::{move_cursor, scroll_window};
-use zellij_common::ui::{body_height, draw, header, input, key_bar, render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
+use zellij_common::ui::{body_height, draw, header, input, help_key_bar as key_bar, draw_help, render_row, BOLD, DIM, GREEN, ORANGE, RED, RESET};
 use zellij_common::fuzzy;
 
 /// `$1` source repository, `$2` workspace name, `$3` destination.
@@ -69,6 +69,7 @@ enum Mode {
 struct State {
     config: Config,
     mode: Mode,
+    help_scroll: Option<usize>,
 
     /// Existing workspace sets. The Home list is "new" followed by these.
     workspaces: Vec<String>,
@@ -171,6 +172,10 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        if self.help_scroll.is_some() {
+            self.render_help(rows, cols);
+            return;
+        }
         match self.mode {
             Mode::Home => self.render_home(rows, cols),
             Mode::Name => self.render_name(rows, cols),
@@ -182,6 +187,76 @@ impl ZellijPlugin for State {
 }
 
 impl State {
+    fn render_help(&mut self, rows: usize, cols: usize) {
+        let mut entries = vec![
+            ("", "General"),
+            ("F1", "Open or close this help"),
+            ("Ctrl-c", "Close the plugin when idle (outside help)"),
+        ];
+        let title = match self.mode {
+            Mode::Home => {
+                entries.extend([
+                    ("", "Navigation"),
+                    ("↑/↓ or k/j", "Move through workspace sets"),
+                    ("Enter", "Open the selected set or start a new workspace"),
+                    ("Ctrl-r", "Refresh workspace sets and sessions"),
+                    ("Esc", "Close the plugin"),
+                    ("", "Delete · confirmation required"),
+                    ("d", "Review deletion of the selected set"),
+                    ("c", "Review cleanup of all stale sets"),
+                ]);
+                "Help · Workspaces"
+            }
+            Mode::Repos => {
+                entries.extend([
+                    ("", "Navigation and search"),
+                    ("↑/↓ or Ctrl-k/j", "Move through repositories"),
+                    ("Type / Backspace", "Filter / remove the last character"),
+                    ("Ctrl-u", "Clear the filter"),
+                    ("Ctrl-r", "Rescan; reset selection to saved membership"),
+                    ("", "Edit membership"),
+                    ("Tab", "Toggle the selected repository"),
+                    ("Ctrl-f", "Name a feature workspace for this repository"),
+                    ("Enter", "Create the workspace or apply membership changes"),
+                    ("Esc", "Return to workspace sets without applying"),
+                ]);
+                "Help · Repositories"
+            }
+            Mode::Name => {
+                entries.extend([
+                    ("", "Name a workspace"),
+                    ("Type / Backspace", "Enter / edit the name"),
+                    ("Enter", "Continue to repository selection"),
+                    ("Esc", "Return to workspace sets"),
+                ]);
+                "Help · New workspace"
+            }
+            Mode::Feature => {
+                entries.extend([
+                    ("", "Add feature workspaces"),
+                    ("Type / Backspace", "Enter / edit the feature name"),
+                    ("Enter", "Add the feature and enter another name"),
+                    ("Enter on empty / Ctrl-d / Esc", "Finish and return to repositories"),
+                ]);
+                "Help · Features"
+            }
+            Mode::Confirm => {
+                entries.extend([
+                    ("", "Confirm deletion"),
+                    ("y", "Forget workspaces and remove their directories"),
+                    ("n / Esc", "Cancel and return to workspace sets"),
+                    ("", "Unsaved changes are preserved on saved-<set> bookmarks."),
+                    ("", "Affected running sessions will be killed."),
+                ]);
+                "Help · Delete"
+            }
+        };
+        if self.busy() {
+            entries.insert(0, ("", "Operation in progress; normal actions are disabled."));
+        }
+        draw_help(title, &entries, self.help_scroll.as_mut().unwrap(), rows, cols);
+    }
+
     fn mount() -> &'static Path {
         Path::new(HOST_MOUNT)
     }
@@ -278,6 +353,19 @@ impl State {
     }
 
     fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        if key.bare_key == BareKey::F(1) {
+            self.help_scroll = if self.help_scroll.is_some() { None } else { Some(0) };
+            return true;
+        }
+        if let Some(offset) = &mut self.help_scroll {
+            match key.bare_key {
+                BareKey::Esc => self.help_scroll = None,
+                BareKey::Down => *offset = offset.saturating_add(1),
+                BareKey::Up => *offset = offset.saturating_sub(1),
+                _ => {},
+            }
+            return true;
+        }
         if self.busy() {
             return false;
         }
@@ -890,3 +978,32 @@ impl State {
     }
 }
 
+
+#[cfg(test)]
+mod help_tests {
+    use super::*;
+
+    #[test]
+    fn help_preserves_search_and_selection_and_consumes_actions() {
+        let mut state = State {
+            mode: Mode::Repos,
+            query: "project".into(),
+            cursor: 3,
+            ..State::default()
+        };
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        assert_eq!(state.help_scroll, Some(0));
+        for key in [BareKey::Char('d'), BareKey::Tab, BareKey::Enter, BareKey::Backspace, BareKey::Down] {
+            state.handle_key(KeyWithModifier::new(key));
+        }
+        assert_eq!(state.help_scroll, Some(1));
+        state.handle_key(KeyWithModifier::new(BareKey::Esc));
+        assert_eq!(state.help_scroll, None);
+        assert_eq!(state.query, "project");
+        assert_eq!(state.cursor, 3);
+        assert!(matches!(state.mode, Mode::Repos));
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        state.handle_key(KeyWithModifier::new(BareKey::F(1)));
+        assert_eq!(state.help_scroll, None);
+    }
+}
