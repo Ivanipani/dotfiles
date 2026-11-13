@@ -5,6 +5,14 @@ prompt off
 
 export XDG_CONFIG_HOME="$HOME/.config"
 
+# Where `p10k configure` reads/writes its config (a symlink into the repo).
+typeset -g POWERLEVEL9K_CONFIG_FILE="$XDG_CONFIG_HOME/zsh/p10k/p10k.zsh"
+
+# Powerlevel10k instant prompt; must stay close to the top.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+    source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 # The repo root, for opening it (`ec`) — never for reaching into its layout.
 # Anything a shell needs to *run* is symlinked onto PATH by the module that
 # owns it, so moving a file inside the repo shows up as drift, not a 404.
@@ -15,6 +23,10 @@ for _dot_fragment in "$XDG_CONFIG_HOME"/zsh/*.zsh(N); do
     source "$_dot_fragment"
 done
 unset _dot_fragment
+
+# Written by `p10k configure`. Sourcing it here (not in a fragment) is what
+# stops the wizard from trying to edit this rendered file.
+[[ ! -f "$POWERLEVEL9K_CONFIG_FILE" ]] || source "$POWERLEVEL9K_CONFIG_FILE"
 {% if v.gcloud_sdk %}
 
 # Google Cloud SDK

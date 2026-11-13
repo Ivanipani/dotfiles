@@ -75,6 +75,8 @@ zsh	symlink	ln -s $REPO/configs/zsh/common/05-options.zsh $HOME/.config/zsh/05-o
 zsh	symlink	ln -s $REPO/configs/zsh/common/06-plugins.zsh $HOME/.config/zsh/06-plugins.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/common/06-prompt-info.zsh $HOME/.config/zsh/06-prompt-info.zsh
 zsh	symlink	ln -s $REPO/configs/zsh/plugins $HOME/.config/zsh/plugins
+zsh	dir	mkdir -p $HOME/.config/zsh/p10k
+zsh	symlink	ln -s $REPO/configs/zsh/p10k.zsh $HOME/.config/zsh/p10k/p10k.zsh
 zsh	dir	mkdir -p $HOME/.config/atuin
 zsh	symlink	ln -s $REPO/configs/zsh/atuin.toml $HOME/.config/atuin/config.toml
 zsh	symlink	ln -s $REPO/configs/zsh/starship.toml $HOME/.config/starship.toml

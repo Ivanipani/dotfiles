@@ -12,3 +12,6 @@ __pycache__/
 
 # Claude account-skill sync (written via ~/.claude/skills symlink)
 configs/agents/skills/synced/
+
+# zsh compiles sourced plugin files in place
+*.zwc

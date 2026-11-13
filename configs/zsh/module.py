@@ -25,6 +25,12 @@ class Zsh(Module):
         # Vendored plugins and theme, linked as one tree.
         yield Symlink(self.path("plugins"), zdir / "plugins")
 
+        # `p10k configure` resolves this symlink and rewrites the repo file,
+        # so the wizard output lands in version control. Kept out of zdir's top
+        # level so the *.zsh fragment glob doesn't source it early.
+        yield Dir(zdir / "p10k")
+        yield Symlink(self.path("p10k.zsh"), zdir / "p10k" / "p10k.zsh")
+
         yield Dir(host.xdg_config / "atuin")
         yield Symlink(self.path("atuin.toml"), host.xdg_config / "atuin" / "config.toml")
         yield Symlink(self.path("starship.toml"), host.xdg_config / "starship.toml")
