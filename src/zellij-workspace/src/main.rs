@@ -874,7 +874,8 @@ impl State {
             .iter()
             .map(|name| self.project_dir(name).to_string_lossy().into_owned())
             .collect();
-        let mut args = vec!["sh", "-c", PREPARE_SCRIPT, "sh"];
+        let set_dir = workspace_path(&self.config, &self.target, None).to_string_lossy().into_owned();
+        let mut args = vec!["sh", "-c", PREPARE_SCRIPT, "sh", set_dir.as_str()];
         args.extend(dirs.iter().map(String::as_str));
         self.pending = 1;
         run_command(&args, context);

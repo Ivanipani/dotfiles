@@ -75,7 +75,7 @@ mod tests {
                 .env("JJ_CONFIG", "")
                 .env("XDG_CONFIG_HOME", root.join("config"))
                 .args(["-c", PREPARE_SCRIPT, "sh"])
-                .arg(&workspace)
+                .args([&root, &workspace])
                 .output()
                 .unwrap());
         }
@@ -109,7 +109,7 @@ mod tests {
             .env("JJ_CONFIG", "")
             .env("XDG_CONFIG_HOME", root.join("config"))
             .args(["-c", PREPARE_SCRIPT, "sh"])
-            .arg(root.join("missing"))
+            .args([root.clone(), root.join("missing")])
             .output()
             .unwrap();
         assert!(!failed.status.success());
