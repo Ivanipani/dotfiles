@@ -9,3 +9,6 @@ __pycache__/
 .pytest_cache/
 **/target/*
 .task/
+
+# Claude account-skill sync (written via ~/.claude/skills symlink)
+configs/agents/skills/synced/
