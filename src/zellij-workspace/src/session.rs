@@ -92,12 +92,33 @@ pub fn plan(snapshot: &str, desired: &str, root: &Path) -> Result<Plan, String> 
         })
     });
     let has_additions = body.nodes().iter().any(|n| n.name().value() == "tab");
+    inline_tab_template(body);
     desired.fmt();
     Ok(Plan {
         ready: !tabs.is_empty() && tabs.iter().filter(|t| wanted.contains(&t.name) || obsolete.contains(&t.name)).all(|t| t.selectable_tiled_panes_count + t.selectable_floating_panes_count > 0),
         layout: if has_additions { desired.to_string() } else { String::new() },
         close: tabs.iter().filter(|t| obsolete.contains(&t.name)).map(|t| t.tab_id).collect(),
     })
+}
+
+/// `new-tab --layout-string` ignores `default_tab_template`, so wrap each tab's
+/// panes in the template's panes (where its `children` sits) and drop the template.
+fn inline_tab_template(body: &mut KdlDocument) {
+    let Some(at) = body.nodes().iter().position(|n| n.name().value() == "default_tab_template") else { return };
+    let template = body.nodes_mut().remove(at);
+    let Some(frame) = template.children() else { return };
+    for tab in body.nodes_mut().iter_mut().filter(|n| n.name().value() == "tab") {
+        let inner = tab.children().cloned().unwrap_or_default();
+        let mut wrapped = KdlDocument::new();
+        for node in frame.nodes() {
+            if node.name().value() == "children" {
+                wrapped.nodes_mut().extend(inner.nodes().iter().cloned());
+            } else {
+                wrapped.nodes_mut().push(node.clone());
+            }
+        }
+        tab.set_children(wrapped);
+    }
 }
 
 fn has_cwd(node: &kdl::KdlNode, base: &Path, cwd: &Path) -> bool {
@@ -110,6 +131,17 @@ fn has_cwd(node: &kdl::KdlNode, base: &Path, cwd: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn added_tabs_carry_the_template_panes_around_their_own() {
+        let template = "layout {\n default_tab_template {\n pane name=\"bar\"\n children\n }\n}";
+        let root = crate::layout::Project { name: "reek".into(), dir: "/work/reek".into() };
+        let desired = crate::layout::compose(template, &root, &[]).unwrap();
+        let snapshot = "[]\n---WORKSPACE-LAYOUT---\nlayout { cwd \"/work/reek\"; }";
+        let plan = plan(snapshot, &desired, Path::new("/work/reek")).unwrap();
+        assert!(!plan.layout.contains("default_tab_template") && !plan.layout.contains("children"));
+        assert!(plan.layout.contains(r#"name="bar""#));
+    }
 
     #[test]
     fn reconciles_restored_tabs_and_preserves_custom_tabs() {
