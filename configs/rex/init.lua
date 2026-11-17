@@ -47,11 +47,13 @@ section = "Command"
 -- locked: ctrl+a enters command mode
 rex.bind("ctrl+a", enter_mode.command)
 
--- Exit keys: esc and ctrl+a lock again inside every mode. Bound to the built-in
--- action, not a titled wrapper, so the menu does not suggest them.
+-- Exit keys: esc and ctrl+a lock again inside every mode except command, which
+-- Rex leaves on esc by itself; binding them there would list "Exit All Modes" in the menu.
 for _, m in ipairs(modes) do
-  for _, key in ipairs({ "ctrl+a", "esc" }) do
-    rex.bind(m .. "/" .. key, "client.mode.exit_all")
+  if m ~= "command" then
+    for _, key in ipairs({ "ctrl+a", "esc" }) do
+      rex.bind(m .. "/" .. key, "client.mode.exit_all")
+    end
   end
 end
 
@@ -76,10 +78,12 @@ for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scro
   rex.bind(m .. "/" .. key, enter_mode.command)
 end
 
+-- Tab moves work outside modes only; in command mode they would clutter the menu.
+rex.bind("alt+i", "client.tab.move", { direction = "backward" })
+rex.bind("alt+o", "client.tab.move", { direction = "forward" })
+
 -- shared_among normal/locked
 for _, prefix in ipairs({ "", "command/" }) do
-  rex.bind(prefix .. "alt+i", "client.tab.move", { direction = "backward" })
-  rex.bind(prefix .. "alt+o", "client.tab.move", { direction = "forward" })
   rex.bind(prefix .. "alt+n", "pane.split", { direction = "auto" })
   rex.bind(prefix .. "alt+f", "pane.go_to")
 end
