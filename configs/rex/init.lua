@@ -219,16 +219,19 @@ local function hide(ctx, layer)
   call(ctx, "session.set_layer_state", { layer_id = layer.layer_id, state = "minimized" })
 end
 
--- Working directory of the focused terminal, if it has reported one.
+-- Working directory of the focused terminal: its foreground program's, else the shell's.
 local function focused_cwd(ctx)
   if not ctx.block_id then return nil end
-  local ok, r = pcall(rex.block.call, TERMINAL, "pwd", { block_id = ctx.block_id })
-  return ok and type(r) == "table" and r.pwd or nil
+  local ok, p = pcall(rex.block.call, TERMINAL, "process", { block_id = ctx.block_id })
+  if not ok or type(p) ~= "table" then return nil end
+  local fg, shell = p.foreground, p.ancestors and p.ancestors[1]
+  return (fg and fg.cwd) or (shell and shell.cwd)
 end
 
+-- `command` is a shell command line, run by a login shell in the focused cwd.
 local function open_float(ctx, label, command, bounds)
   local options = { cwd = focused_cwd(ctx) }
-  if command then options.command = { "zsh", "-lic", "exec " .. command } end
+  if command then options.command = { "zsh", "-lic", command } end
   call(ctx, "session.new_layer", {
     bounds = bounds or { 0.1, 0.1, 0.8, 0.8 }, focus = true,
     layout = { block = { flavor = TERMINAL .. ".shell", label = label, options = options } },
@@ -236,12 +239,12 @@ local function open_float(ctx, label, command, bounds)
 end
 
 -- Show/focus/hide a named float. Creates it running `command` when missing.
-local function toggle_float(label, command)
+local function toggle_float(label, command, bounds)
   return function(ctx)
     local win = active_window(ctx)
     local layer = find_float(win, label)
     if not layer then
-      if command then open_float(ctx, label, command) end
+      open_float(ctx, label, command, bounds)
     elseif layer.state == "minimized" or not layer_has(layer, win.focused_block_id) then
       show(ctx, layer)
     else
@@ -302,9 +305,9 @@ local function toggle_all(ctx, win)
   end
 end
 
-rex.action{ name = "workspace_jjui", title = "Toggle jjui", run = toggle_float("jjui") }
-rex.action{ name = "float_scratch", title = "Toggle scratch shell", run = toggle_float("scratch", "zsh") }
-rex.action{ name = "float_claude", title = "Toggle claude", run = toggle_float("claude", "claude") }
+rex.action{ name = "workspace_jjui", title = "Toggle jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
+rex.action{ name = "float_scratch", title = "Toggle scratch shell", run = toggle_float("scratch", "exec zsh") }
+rex.action{ name = "float_claude", title = "Toggle claude", run = toggle_float("claude", "exec claude") }
 float_action("float_toggle_all", "Hide or show all floats", toggle_all, true)
 float_action("float_prev", "Focus previous float", cycle(-1), true)
 float_action("float_next", "Focus next float", cycle(1), true)
