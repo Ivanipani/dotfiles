@@ -1,7 +1,7 @@
 -- Migrated from zellij (default_mode "locked": Rex with no mode active).
 -- zellij's "normal" mode is the Rex mode "command", entered with ctrl+a.
 
-local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session" }
+local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session", "workspace" }
 for _, m in ipairs(modes) do
   rex.mode(m, { exclusive = true })
 end
@@ -46,15 +46,16 @@ local function switches(key, target, from)
     rex.bind(m .. "/" .. key, "switch_mode", { name = target })
   end
 end
-switches("m", "move",    { "command", "pane", "tab", "resize", "scroll", "session" })
+switches("m", "move",    { "command", "pane", "tab", "resize", "scroll", "session", "workspace" })
 switches("o", "session", { "command", "pane", "tab", "resize", "move", "scroll" })
-switches("t", "tab",     { "command", "pane", "resize", "move", "scroll", "session" })
-switches("p", "pane",    { "command", "tab", "resize", "scroll" })
+switches("t", "tab",     { "command", "pane", "resize", "move", "scroll", "session", "workspace" })
+switches("p", "pane",    { "command", "tab", "resize", "scroll", "workspace" })
 switches("s", "scroll",  { "command", "resize", "move" })
-switches("r", "resize",  { "command", "move", "scroll", "session" })
+switches("r", "resize",  { "command", "move", "scroll", "session", "workspace" })
+switches("w", "workspace", { "command", "pane", "tab", "resize", "move", "scroll", "session" })
 
 -- Back to command mode (zellij "normal")
-for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session" }) do
+for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session", w = "workspace" }) do
   rex.bind(m .. "/" .. key, "switch_mode", { name = "command" })
 end
 
@@ -87,3 +88,54 @@ for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
   rex.bind("resize/" .. key, "pane.resize", { direction = dir })
   rex.bind("move/" .. key, "pane.move", { direction = dir })
 end
+
+-- workspace sets (rex-workspace): a float runs the picker, jjui is a float per project tab
+rex.action{
+  name  = "workspace_float",
+  title = "Run a rex-workspace command in a floating pane",
+  args  = { sub = "string" },
+  run   = function(ctx, args)
+    rex.call("session.new_layer", {
+      session_id = ctx.session_id,
+      bounds = { 0.15, 0.2, 0.7, 0.6 },
+      focus = true,
+      layout = { block = {
+        flavor = "com.superlogical.terminal.shell",
+        label = "workspace",
+        options = { command = { "rex-workspace", args.sub } },
+      } },
+    })
+    rex.client.queue("client.mode.exit_all")
+  end,
+}
+
+rex.action{
+  name  = "workspace_jjui",
+  title = "Show or hide the active tab's jjui float",
+  run   = function(ctx)
+    local view = rex.call("session.view", { session_id = ctx.session_id })
+    for _, win in ipairs(view.windows) do
+      if win.window_id == view.active_window_id then
+        for _, layer in ipairs(win.layers) do
+          for _, b in ipairs(layer.blocks) do
+            if layer.kind == "floating" and b.label == "jjui" then
+              local show = layer.state == "minimized"
+              rex.call("session.set_layer_state", {
+                session_id = ctx.session_id, layer_id = layer.layer_id,
+                state = show and "normal" or "minimized", focus = show,
+              })
+              return
+            end
+          end
+        end
+      end
+    end
+  end,
+}
+
+rex.bind("alt+g", "workspace_jjui")
+rex.bind("command/alt+g", "workspace_jjui")
+for key, sub in pairs({ o = "open", n = "new", a = "add", x = "remove", d = "delete" }) do
+  rex.bind("workspace/" .. key, "workspace_float", { sub = sub })
+end
+rex.bind("workspace/j", "then_normal", { action = "workspace_jjui" })
