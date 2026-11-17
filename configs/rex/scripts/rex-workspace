@@ -25,6 +25,14 @@ def --wrapped rx [...args: string] {
   run-external $bin ...$args
 }
 
+# The live Rex.app client; stale ones linger after an app restart and make `rex do` ambiguous.
+def app-client [] {
+  if ($env.REX_CLIENT? | is-not-empty) { return $env.REX_CLIENT }
+  rx client ls --json | from json | get clients
+  | where {|c| ($c.info?.kind? == "app") and ($c.connection_state? == "connected") }
+  | get client_id.0?
+}
+
 def rex-call [session: string, method: string, args: record = {}] {
   rx api call -s $session $method ($args | to json -r) | from json
 }
@@ -207,7 +215,7 @@ def "main open" [set?: string] {
     $created.session_id
   }
   # No app attached (headless, or several): the session is still created.
-  try { rx do session.select $"session_id=($id)" } catch { print -e $"opened ($id); could not switch; enable Remote Control in Rex Settings > Rex Server" }
+  try { rx -C (app-client) do session.select $"session_id=($id)" } catch {|e| print -e $"opened ($id); could not switch: ($e.msg)" }
 }
 
 # Create a set from repositories (fzf when none are named), then open it.
