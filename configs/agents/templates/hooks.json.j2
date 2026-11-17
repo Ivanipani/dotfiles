@@ -10,12 +10,18 @@
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/handoff-context.sh\""
-          }
+          },
+          {
+            "type": "command",
+            "command": "/bin/sh -c 'rex __internal session-start --agent {{ client }} --feature-session-naming=false 2>/dev/null || true'",
+            "timeout": 5
+          },
+          {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}
         ]
       }
     ],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}]}],
-    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -35,17 +41,19 @@
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/notify.sh\""
-          }
+          },
+          {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}
         ]
       }
     ],
 {% else %}
-    "PermissionRequest": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}]}],
-    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}]}],
+    "PermissionRequest": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
 {% endif %}
     "Stop": [
       {
         "hooks": [
+          {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"},
 {% if client == "codex" %}
           {
             "type": "command",

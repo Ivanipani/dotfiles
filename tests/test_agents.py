@@ -29,9 +29,13 @@ def test_shared_agent_install(host, ctx, modules):
     assert (home / ".codex/hooks.json").is_symlink()
     assert not (home / ".codex/config.toml").exists()
     for event in ("SessionStart", "PreToolUse"):
-        assert str(claude["hooks"][event]).replace(".claude", ".codex") == str(
-            codex["hooks"][event]
+        normalized = (
+            str(claude["hooks"][event])
+            .replace(".claude", ".codex")
+            .replace("claude-code", "codex")
+            .replace("--agent claude", "--agent codex")
         )
+        assert normalized == str(codex["hooks"][event])
     assert "Notification" not in codex["hooks"]
     assert {"PermissionRequest", "SubagentStop", "Stop"} <= codex["hooks"].keys()
     for config in (claude, codex):
@@ -39,7 +43,8 @@ def test_shared_agent_install(host, ctx, modules):
             for group in groups:
                 for hook in group["hooks"]:
                     command = hook["command"].replace("$HOME", str(home))
-                    assert os.path.isfile(command.split('"')[1])
+                    if command.startswith('"'):  # skip inline shell commands
+                        assert os.path.isfile(command.split('"')[1])
     assert all(c.drift.status == Status.OK for c in reconcile.check(items, ctx))
 
 
@@ -323,3 +328,62 @@ def test_quota_guard_borrows_codex_quota_from_a_recent_rollout_in_a_fresh_sessio
     fresh.write_text(Path(_codex_transcript(tmp_path, 0, with_limits=False)).read_text())
     output = json.loads(_codex_guard(repo, tmp_path, str(fresh), event="UserPromptSubmit").stdout)
     assert "95%" in output["hookSpecificOutput"]["additionalContext"]
+
+
+def _run_rex_status(repo, tmp_path, payload, *, in_rex=True, app=None):
+    tty = tmp_path / "tty"
+    tty.touch()
+    env = {**os.environ, "REX_STATUS_TTY": str(tty)}
+    env.pop("REX_BLOCK", None)
+    if in_rex:
+        env["REX_BLOCK"] = "block:test"
+    subprocess.run(
+        [str(repo / "configs/agents/hooks/rex-status.sh"), *([app] if app else [])],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+    return tty.read_text()
+
+
+@pytest.mark.parametrize(
+    "payload, expected",
+    [
+        ({"hook_event_name": "UserPromptSubmit"}, "state=working:app=claude-code"),
+        ({"hook_event_name": "PostToolUse"}, "state=working:app=claude-code"),
+        ({"hook_event_name": "Stop"}, "state=done:app=claude-code"),
+        ({"hook_event_name": "SessionStart"}, "state=idle:app=claude-code"),
+        (
+            {"hook_event_name": "Notification", "notification_type": "permission_prompt"},
+            "state=blocked:app=claude-code:kind=permission",
+        ),
+        (
+            {"hook_event_name": "Notification", "notification_type": "elicitation_dialog"},
+            "state=blocked:app=claude-code:kind=question",
+        ),
+        ({"hook_event_name": "PermissionRequest"}, "state=blocked:app=claude-code:kind=permission"),
+    ],
+)
+def test_rex_status_reports_the_state_for_each_hook_event(repo, tmp_path, payload, expected):
+    # GIVEN a hook event, WHEN rex-status runs inside Rex, THEN it writes the matching OSC 7501 state
+    assert expected in _run_rex_status(repo, tmp_path, payload)
+
+
+def test_rex_status_names_the_app_from_its_argument(repo, tmp_path):
+    out = _run_rex_status(repo, tmp_path, {"hook_event_name": "Stop"}, app="codex")
+    assert "state=done:app=codex" in out
+
+
+def test_rex_status_base64_encodes_the_notification_message(repo, tmp_path):
+    payload = {"hook_event_name": "Notification", "notification_type": "permission_prompt", "message": "Run ls?"}
+    assert ":msg=UnVuIGxzPw==" in _run_rex_status(repo, tmp_path, payload)
+
+
+def test_rex_status_ignores_events_it_has_no_state_for(repo, tmp_path):
+    assert _run_rex_status(repo, tmp_path, {"hook_event_name": "PreToolUse"}) == ""
+
+
+def test_rex_status_is_silent_outside_rex(repo, tmp_path):
+    assert _run_rex_status(repo, tmp_path, {"hook_event_name": "Stop"}, in_rex=False) == ""

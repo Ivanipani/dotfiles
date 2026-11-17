@@ -1,7 +1,7 @@
 -- Migrated from zellij (default_mode "locked": Rex with no mode active).
 -- zellij's "normal" mode is the Rex mode "command", entered with ctrl+a.
 
-local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session", "workspace" }
+local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session", "workspace", "float" }
 for _, m in ipairs(modes) do
   rex.mode(m, { exclusive = true })
 end
@@ -25,6 +25,7 @@ end
 local mode_titles = {
   command = "Command", pane = "Pane", tab = "Tab", resize = "Resize",
   move = "Move", scroll = "Scroll", session = "Session", workspace = "Workspace",
+  float = "Float",
 }
 local enter_mode = {}
 for m, title in pairs(mode_titles) do
@@ -73,6 +74,7 @@ switches("p", "pane",    { "command", "tab", "resize", "scroll", "workspace" })
 switches("s", "scroll",  { "command", "resize", "move" })
 switches("r", "resize",  { "command", "move", "scroll", "session", "workspace" })
 switches("w", "workspace", { "command", "pane", "tab", "resize", "move", "scroll", "session" })
+switches("l", "float",   { "command" })
 
 -- Back to command mode (zellij "normal")
 for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session", w = "workspace" }) do
@@ -144,32 +146,6 @@ local function workspace_float(sub)
   end
 end
 
-rex.action{
-  name  = "workspace_jjui",
-  title = "Toggle jjui",
-  run   = function(ctx)
-    local view = rex.call("session.view", { session_id = ctx.session_id })
-    for _, win in ipairs(view.windows) do
-      if win.window_id == view.active_window_id then
-        for _, layer in ipairs(win.layers) do
-          for _, b in ipairs(layer.blocks) do
-            if layer.kind == "floating" and b.label == "jjui" then
-              local show = layer.state == "minimized"
-              rex.call("session.set_layer_state", {
-                session_id = ctx.session_id, layer_id = layer.layer_id,
-                state = show and "normal" or "minimized", focus = show,
-              })
-              return
-            end
-          end
-        end
-      end
-    end
-  end,
-}
-
-rex.bind("alt+g", "workspace_jjui")
-rex.bind("command/alt+g", "workspace_jjui")
 local workspace_keys = {
   o = { "open", "Open workspace" }, n = { "new", "New workspace" },
   a = { "add", "Add repo to workspace" }, x = { "remove", "Remove repo from workspace" },
@@ -178,4 +154,221 @@ local workspace_keys = {
 for key, v in pairs(workspace_keys) do
   rex.bind("workspace/" .. key, act("workspace_" .. v[1], v[2], workspace_float(v[1])))
 end
+
+-- Floats --------------------------------------------------------------------
+-- Global keys (locked and command mode):
+--   alt+g jjui   alt+t scratch shell   alt+a claude   alt+w hide/show all floats
+--   alt+, / alt+.  focus the previous / next float
+-- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
+-- m hide, c center, z maximize, h/j/k/l move, shift+h/j/k/l resize, tab cycle.
+
+local TERMINAL = "com.superlogical.terminal"
+local STEP = 0.05
+local MIN = 0.15
+
+local function call(ctx, method, args)
+  args.session_id = ctx.session_id
+  local result, err = rex.call(method, args)
+  if err ~= nil then error(method .. ": " .. tostring(err), 0) end
+  return result
+end
+
+local function active_window(ctx)
+  local view = call(ctx, "session.view", {})
+  for _, win in ipairs(view.windows) do
+    if win.window_id == view.active_window_id then return win end
+  end
+end
+
+local function layer_has(layer, block_id)
+  for _, b in ipairs(layer.blocks) do
+    if b.block_id == block_id then return true end
+  end
+  return false
+end
+
+local function floats(win)
+  local out = {}
+  for _, layer in ipairs(win.layers) do
+    if layer.kind == "floating" then out[#out + 1] = layer end
+  end
+  return out
+end
+
+-- The floating layer holding the focused block, with its index among floats.
+local function focused_float(win)
+  for i, layer in ipairs(floats(win)) do
+    if layer_has(layer, win.focused_block_id) then return layer, i end
+  end
+end
+
+local function find_float(win, label)
+  for _, layer in ipairs(floats(win)) do
+    for _, b in ipairs(layer.blocks) do
+      if b.label == label then return layer end
+    end
+  end
+end
+
+local function show(ctx, layer)
+  call(ctx, "session.set_layer_state",
+    { layer_id = layer.layer_id, state = "normal", focus = true })
+end
+
+local function hide(ctx, layer)
+  call(ctx, "session.set_layer_state", { layer_id = layer.layer_id, state = "minimized" })
+end
+
+-- Working directory of the focused terminal, if it has reported one.
+local function focused_cwd(ctx)
+  if not ctx.block_id then return nil end
+  local ok, r = pcall(rex.block.call, TERMINAL, "pwd", { block_id = ctx.block_id })
+  return ok and type(r) == "table" and r.pwd or nil
+end
+
+local function open_float(ctx, label, command, bounds)
+  local options = { cwd = focused_cwd(ctx) }
+  if command then options.command = { "zsh", "-lic", "exec " .. command } end
+  call(ctx, "session.new_layer", {
+    bounds = bounds or { 0.1, 0.1, 0.8, 0.8 }, focus = true,
+    layout = { block = { flavor = TERMINAL .. ".shell", label = label, options = options } },
+  })
+end
+
+-- Show/focus/hide a named float. Creates it running `command` when missing.
+local function toggle_float(label, command)
+  return function(ctx)
+    local win = active_window(ctx)
+    local layer = find_float(win, label)
+    if not layer then
+      if command then open_float(ctx, label, command) end
+    elseif layer.state == "minimized" or not layer_has(layer, win.focused_block_id) then
+      show(ctx, layer)
+    else
+      hide(ctx, layer)
+    end
+  end
+end
+
+-- A float action; `stay` keeps the current key mode active afterwards.
+local function float_action(name, title, fn, stay)
+  rex.action{
+    name = name, title = title,
+    run = function(ctx)
+      fn(ctx, active_window(ctx))
+      if not stay then rex.client.queue("client.mode.exit_all") end
+    end,
+  }
+  return name
+end
+
+local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
+
+-- Apply `change(x, y, w, h)` to the focused float's bounds, kept inside the window.
+local function reshape(change)
+  return function(ctx, win)
+    local layer = focused_float(win)
+    if not layer then return end
+    local b = layer.bounds
+    local x, y, w, h = change(b[1], b[2], b[3], b[4])
+    w, h = clamp(w, MIN, 1), clamp(h, MIN, 1)
+    call(ctx, "session.resize_layer", {
+      layer_id = layer.layer_id,
+      bounds = { clamp(x, 0, 1 - w), clamp(y, 0, 1 - h), w, h },
+    })
+  end
+end
+
+local function cycle(delta)
+  return function(ctx, win)
+    local all = floats(win)
+    if #all == 0 then return end
+    local _, i = focused_float(win)
+    show(ctx, all[((i or (delta > 0 and 0 or 1)) - 1 + delta) % #all + 1])
+  end
+end
+
+local function any_visible(win)
+  for _, layer in ipairs(floats(win)) do
+    if layer.state ~= "minimized" then return true end
+  end
+end
+
+local function toggle_all(ctx, win)
+  local hiding = any_visible(win)
+  for _, layer in ipairs(floats(win)) do
+    if hiding then hide(ctx, layer) else call(ctx, "session.set_layer_state",
+      { layer_id = layer.layer_id, state = "normal" }) end
+  end
+end
+
+rex.action{ name = "workspace_jjui", title = "Toggle jjui", run = toggle_float("jjui") }
+rex.action{ name = "float_scratch", title = "Toggle scratch shell", run = toggle_float("scratch", "zsh") }
+rex.action{ name = "float_claude", title = "Toggle claude", run = toggle_float("claude", "claude") }
+float_action("float_toggle_all", "Hide or show all floats", toggle_all, true)
+float_action("float_prev", "Focus previous float", cycle(-1), true)
+float_action("float_next", "Focus next float", cycle(1), true)
+
+for key, action in pairs({
+  ["alt+g"] = "workspace_jjui", ["alt+t"] = "float_scratch", ["alt+a"] = "float_claude",
+  ["alt+w"] = "float_toggle_all", ["alt+[Comma]"] = "float_prev", ["alt+[Period]"] = "float_next",
+}) do
+  rex.bind(key, action)
+  rex.bind("command/" .. key, action)
+end
 rex.bind("workspace/j", done("jjui_toggle", "Toggle jjui", "workspace_jjui"))
+
+-- float mode
+local function float_key(key, name, title, fn, stay)
+  rex.bind("float/" .. key, float_action(name, title, fn, stay))
+end
+
+float_key("n", "float_new", "New float", function(ctx) open_float(ctx, "float") end)
+float_key("f", "float_pane", "Float this pane", function(ctx, win)
+  call(ctx, "session.float_block", { block_id = ctx.block_id, bounds = { 0.1, 0.1, 0.8, 0.8 } })
+end)
+float_key("e", "float_tile", "Tile this float", function(ctx, win)
+  local layer = focused_float(win)
+  if not layer then return end
+  call(ctx, "session.move_block", {
+    block_id = win.focused_block_id, anchor_block_id = win.layers[1].blocks[1].block_id,
+  })
+end)
+float_key("x", "float_close", "Close float", function(ctx, win)
+  local layer = focused_float(win)
+  if layer then call(ctx, "session.close_layer", { layer_id = layer.layer_id }) end
+end)
+float_key("m", "float_hide", "Hide float", function(ctx, win)
+  local layer = focused_float(win)
+  if layer then hide(ctx, layer) end
+end)
+float_key("w", "float_all_toggle", "Hide or show all floats", toggle_all)
+float_key("c", "float_center", "Center float",
+  reshape(function(_, _, w, h) return (1 - w) / 2, (1 - h) / 2, w, h end), true)
+float_key("z", "float_max", "Maximize float",
+  reshape(function() return 0.02, 0.02, 0.96, 0.96 end), true)
+float_key("tab", "float_cycle", "Focus next float", cycle(1), true)
+float_key("shift+tab", "float_cycle_back", "Focus previous float", cycle(-1), true)
+float_key("space", "float_raise", "Raise float", function(ctx, win)
+  local layer = focused_float(win)
+  if layer then call(ctx, "session.raise_layer", { layer_id = layer.layer_id }) end
+end, true)
+
+local moves = {
+  h = { "left",  function(x, y, w, h) return x - STEP, y, w, h end },
+  j = { "down",  function(x, y, w, h) return x, y + STEP, w, h end },
+  k = { "up",    function(x, y, w, h) return x, y - STEP, w, h end },
+  l = { "right", function(x, y, w, h) return x + STEP, y, w, h end },
+}
+local sizes = {
+  h = { "narrower", function(x, y, w, h) return x, y, w - STEP, h end },
+  j = { "taller",   function(x, y, w, h) return x, y, w, h + STEP end },
+  k = { "shorter",  function(x, y, w, h) return x, y, w, h - STEP end },
+  l = { "wider",    function(x, y, w, h) return x, y, w + STEP, h end },
+}
+for key, v in pairs(moves) do
+  float_key(key, "float_move_" .. v[1], "Move float " .. v[1], reshape(v[2]), true)
+end
+for key, v in pairs(sizes) do
+  float_key("shift+" .. key, "float_size_" .. v[1], "Make float " .. v[1], reshape(v[2]), true)
+end
