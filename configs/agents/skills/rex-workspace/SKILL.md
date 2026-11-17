@@ -29,4 +29,4 @@ Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `E
 
 ## Rex keys
 
-`ctrl+a w` enters workspace mode: `o` manager, `n` new, `a` add, `x` remove, `d` delete, `j` jjui. Each opens the manager in a near-fullscreen float; outside a `ws-` session the manager asks you to pick a set instead of failing.
+`ctrl+a w` toggles the manager as a near-fullscreen float, from any tab or session; it closes when the TUI quits. `alt+g` toggles jjui.

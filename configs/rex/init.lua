@@ -1,7 +1,7 @@
 -- Migrated from zellij (default_mode "locked": Rex with no mode active).
 -- zellij's "normal" mode is the Rex mode "command", entered with ctrl+a.
 
-local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session", "workspace", "float" }
+local modes = { "command", "pane", "tab", "resize", "move", "scroll", "session", "float" }
 for _, m in ipairs(modes) do
   rex.mode(m, { exclusive = true })
 end
@@ -32,7 +32,7 @@ end
 -- Leave every mode and enter another.
 local mode_titles = {
   command = "Command", pane = "Pane", tab = "Tab", resize = "Resize",
-  move = "Move", scroll = "Scroll", session = "Session", workspace = "Workspace",
+  move = "Move", scroll = "Scroll", session = "Session",
   float = "Float",
 }
 local enter_mode = {}
@@ -63,12 +63,12 @@ end
 
 -- Mode switches from command mode
 for key, target in pairs({ m = "move", o = "session", t = "tab", p = "pane", s = "scroll",
-                           r = "resize", w = "workspace", l = "float" }) do
+                           r = "resize", l = "float" }) do
   rex.bind("command/" .. key, enter_mode[target])
 end
 
 -- Back to command mode (zellij "normal")
-for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session", w = "workspace" }) do
+for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session" }) do
   rex.bind(m .. "/" .. key, enter_mode.command)
 end
 
@@ -119,39 +119,9 @@ rex.bind("scroll//", done("scroll_find", "Find", "client.find.open"))
 rex.bind("scroll/n", step("scroll_find_next", "Next match", "client.find.next"))
 rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.find.previous"))
 
--- workspace sets (rex-workspace): a near-fullscreen float runs the manager TUI.
--- The TUI handles being outside a ws- session itself, so the float never dies on entry.
-local function workspace_float(action)
-  return function(ctx)
-    local command = "exec rex-workspace"
-    if action ~= nil then command = command .. " tui --action " .. action end
-    rex.call("session.new_layer", {
-      session_id = ctx.session_id,
-      bounds = { 0.03, 0.04, 0.94, 0.92 },
-      focus = true,
-      layout = { block = {
-        flavor = "com.superlogical.terminal.shell",
-        label = "workspace",
-        options = { command = { "zsh", "-lic", command } },
-      } },
-    })
-    rex.client.queue("client.mode.exit_all")
-  end
-end
-
-section = "Workspace"
-local workspace_keys = {
-  o = { "open", "Open", nil }, n = { "new", "New", "new" },
-  a = { "add", "Add repo", "add" }, x = { "remove", "Remove repo", "remove" },
-  d = { "delete", "Delete", "delete" },
-}
-for key, v in pairs(workspace_keys) do
-  rex.bind("workspace/" .. key, act("workspace_" .. v[1], v[2], workspace_float(v[3])))
-end
-
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   ctrl+a w workspaces   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
@@ -317,8 +287,15 @@ for key, action in pairs({
 }) do
   rex.bind(key, action)
 end
-section = "Workspace"
-rex.bind("workspace/j", done("jjui_toggle", "jjui", "workspace_jjui"))
+
+-- Workspace sets (rex-workspace): ctrl+a w pulls the manager TUI up as a
+-- near-fullscreen float, from anywhere. It closes itself when the TUI exits.
+section = "Command"
+local toggle_workspace = toggle_float("workspace", "exec rex-workspace", { 0.03, 0.04, 0.94, 0.92 })
+rex.bind("command/w", act("workspace", "Workspaces", function(ctx)
+  rex.client.queue("client.mode.exit_all")
+  toggle_workspace(ctx)
+end))
 section = "Float"
 
 -- float mode
