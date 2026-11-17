@@ -83,7 +83,7 @@ for _, prefix in ipairs({ "", "command/" }) do
   rex.bind(prefix .. "alt+n", "pane.split", { direction = "auto" })
   rex.bind(prefix .. "alt+f", "pane.go_to")
 end
-rex.bind("command/f", done("go_to", "Go to pane or tab", "pane.go_to"))
+rex.bind("command/f", done("go_to", "Go to", "pane.go_to"))
 
 -- pane
 section = "Pane"
@@ -96,7 +96,7 @@ rex.bind("pane/d", done("pane_close", "Close pane", "pane.close"))
 
 -- tab
 section = "Tab"
-rex.bind("tab/b", done("pane_to_tab", "Move pane to new tab", "pane.move_to_new_tab"))
+rex.bind("tab/b", done("pane_to_tab", "Pane to tab", "pane.move_to_new_tab"))
 rex.bind("tab/h", step("tab_previous", "Previous tab", "client.tab.previous"))
 rex.bind("tab/l", step("tab_next", "Next tab", "client.tab.next"))
 rex.bind("tab/n", done("tab_new", "New tab", "client.tab.new"))
@@ -105,12 +105,12 @@ rex.bind("tab/d", done("tab_close", "Close tab", "client.tab.close"))
 
 -- session
 section = "Session"
-rex.bind("session/j", step("session_next", "Next session", "session.next"))
-rex.bind("session/k", step("session_previous", "Previous session", "session.previous"))
-rex.bind("session/f", done("session_pick", "Switch session", "session.switch"))
-rex.bind("session/n", done("session_new", "New session", "session.new"))
-rex.bind("session/r", done("session_rename", "Rename session", "session.rename"))
-rex.bind("session/d", done("session_close", "Close session", "session.close"))
+rex.bind("session/j", step("session_next", "Next", "session.next"))
+rex.bind("session/k", step("session_previous", "Previous", "session.previous"))
+rex.bind("session/f", done("session_pick", "Switch", "session.switch"))
+rex.bind("session/n", done("session_new", "New", "session.new"))
+rex.bind("session/r", done("session_rename", "Rename", "session.rename"))
+rex.bind("session/d", done("session_close", "Close", "session.close"))
 
 -- scroll (rex scrolls by page)
 section = "Scroll"
@@ -122,14 +122,14 @@ rex.bind("scroll/ctrl+d", page_down)
 rex.bind("scroll/ctrl+u", page_up)
 rex.bind("scroll//", done("scroll_find", "Find", "client.find.open"))
 rex.bind("scroll/n", step("scroll_find_next", "Next match", "client.find.next"))
-rex.bind("scroll/shift+n", step("scroll_find_previous", "Previous match", "client.find.previous"))
+rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.find.previous"))
 
 -- resize (grow) and move
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
   section = "Resize"
   rex.bind("resize/" .. key, step("resize_" .. dir, "Resize " .. dir, "pane.resize", { direction = dir }))
   section = "Move"
-  rex.bind("move/" .. key, step("move_" .. dir, "Move pane " .. dir, "pane.move", { direction = dir }))
+  rex.bind("move/" .. key, step("move_" .. dir, "Move " .. dir, "pane.move", { direction = dir }))
 end
 
 -- workspace sets (rex-workspace): a float runs the picker, jjui is a float per project tab
@@ -151,9 +151,9 @@ end
 
 section = "Workspace"
 local workspace_keys = {
-  o = { "open", "Open workspace" }, n = { "new", "New workspace" },
-  a = { "add", "Add repo to workspace" }, x = { "remove", "Remove repo from workspace" },
-  d = { "delete", "Delete workspace" },
+  o = { "open", "Open" }, n = { "new", "New" },
+  a = { "add", "Add repo" }, x = { "remove", "Remove repo" },
+  d = { "delete", "Delete" },
 }
 for key, v in pairs(workspace_keys) do
   rex.bind("workspace/" .. key, act("workspace_" .. v[1], v[2], workspace_float(v[1])))
@@ -312,13 +312,13 @@ local function toggle_all(ctx, win)
   end
 end
 
-rex.action{ name = "workspace_jjui", category = section, title = "Toggle jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
-rex.action{ name = "float_scratch", category = section, title = "Toggle scratch shell", run = toggle_float("scratch", "exec zsh") }
-rex.action{ name = "float_claude", category = section, title = "Toggle claude", run = toggle_float("claude", "exec claude") }
-rex.action{ name = "float_codex", category = section, title = "Toggle codex", run = toggle_float("codex", "exec codex") }
-float_action("float_toggle_all", "Hide or show all floats", toggle_all, true)
-float_action("float_prev", "Focus previous float", cycle(-1), true)
-float_action("float_next", "Focus next float", cycle(1), true)
+rex.action{ name = "workspace_jjui", category = section, title = "jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
+rex.action{ name = "float_scratch", category = section, title = "Scratch shell", run = toggle_float("scratch", "exec zsh") }
+rex.action{ name = "float_claude", category = section, title = "Claude", run = toggle_float("claude", "exec claude") }
+rex.action{ name = "float_codex", category = section, title = "Codex", run = toggle_float("codex", "exec codex") }
+float_action("float_toggle_all", "Hide/show all", toggle_all, true)
+float_action("float_prev", "Prev float", cycle(-1), true)
+float_action("float_next", "Next float", cycle(1), true)
 
 for key, action in pairs({
   ["alt+g"] = "workspace_jjui", ["alt+t"] = "float_scratch", ["alt+a"] = "float_claude", ["alt+c"] = "float_codex",
@@ -328,7 +328,7 @@ for key, action in pairs({
   rex.bind("command/" .. key, action)
 end
 section = "Workspace"
-rex.bind("workspace/j", done("jjui_toggle", "Toggle jjui", "workspace_jjui"))
+rex.bind("workspace/j", done("jjui_toggle", "jjui", "workspace_jjui"))
 section = "Float"
 
 -- float mode
@@ -337,10 +337,10 @@ local function float_key(key, name, title, fn, stay)
 end
 
 float_key("n", "float_new", "New float", function(ctx) open_float(ctx, "float") end)
-float_key("f", "float_pane", "Float this pane", function(ctx, win)
+float_key("f", "float_pane", "Float pane", function(ctx, win)
   call(ctx, "session.float_block", { block_id = ctx.block_id, bounds = { 0.1, 0.1, 0.8, 0.8 } })
 end)
-float_key("e", "float_tile", "Tile this float", function(ctx, win)
+float_key("e", "float_tile", "Tile", function(ctx, win)
   local layer = focused_float(win)
   if not layer then return end
   call(ctx, "session.move_block", {
@@ -355,13 +355,13 @@ float_key("m", "float_hide", "Hide float", function(ctx, win)
   local layer = focused_float(win)
   if layer then hide(ctx, layer) end
 end)
-float_key("w", "float_all_toggle", "Hide or show all floats", toggle_all)
-float_key("c", "float_center", "Center float",
+float_key("w", "float_all_toggle", "Hide/show all", toggle_all)
+float_key("c", "float_center", "Center",
   reshape(function(_, _, w, h) return (1 - w) / 2, (1 - h) / 2, w, h end), true)
-float_key("z", "float_max", "Maximize float",
+float_key("z", "float_max", "Maximize",
   reshape(function() return 0.02, 0.02, 0.96, 0.96 end), true)
-float_key("tab", "float_cycle", "Focus next float", cycle(1), true)
-float_key("shift+tab", "float_cycle_back", "Focus previous float", cycle(-1), true)
+float_key("tab", "float_cycle", "Next float", cycle(1), true)
+float_key("shift+tab", "float_cycle_back", "Prev float", cycle(-1), true)
 float_key("space", "float_raise", "Raise float", function(ctx, win)
   local layer = focused_float(win)
   if layer then call(ctx, "session.raise_layer", { layer_id = layer.layer_id }) end
@@ -380,8 +380,8 @@ local sizes = {
   l = { "wider",    function(x, y, w, h) return x, y, w + STEP, h end },
 }
 for key, v in pairs(moves) do
-  float_key(key, "float_move_" .. v[1], "Move float " .. v[1], reshape(v[2]), true)
+  float_key(key, "float_move_" .. v[1], "Move " .. v[1], reshape(v[2]), true)
 end
 for key, v in pairs(sizes) do
-  float_key("shift+" .. key, "float_size_" .. v[1], "Make float " .. v[1], reshape(v[2]), true)
+  float_key("shift+" .. key, "float_size_" .. v[1], v[1]:sub(1, 1):upper() .. v[1]:sub(2), reshape(v[2]), true)
 end
