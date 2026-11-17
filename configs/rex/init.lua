@@ -102,7 +102,7 @@ rex.action{
       layout = { block = {
         flavor = "com.superlogical.terminal.shell",
         label = "workspace",
-        options = { command = { "rex-workspace", args.sub } },
+        options = { command = { "zsh", "-lic", "exec rex-workspace " .. args.sub } },
       } },
     })
     rex.client.queue("client.mode.exit_all")

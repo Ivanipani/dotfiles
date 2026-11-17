@@ -13,6 +13,8 @@ const MAX_DEPTH = 3
 
 def rex-bin [] {
   if ($env.REX_BIN? | is-not-empty) { return $env.REX_BIN }
+  let local = ($env.REX_BIN_DIR? | default "" | path join rex)
+  if ($env.REX_BIN_DIR? | is-not-empty) and ($local | path exists) { return $local }
   if (which rex | is-not-empty) { return "rex" }
   if ($FALLBACK_REX | path exists) { $FALLBACK_REX } else { "" }
 }
@@ -161,11 +163,14 @@ def block [label: string, cwd: string, command: list<string> = []] {
   {block: {flavor: $SHELL, label: $label, options: $options}}
 }
 
+# Server-spawned blocks get a bare PATH; run through the user's login shell to get ~/.local/bin etc.
+def in-shell [line: string] { [($env.SHELL? | default zsh) -lic $line] }
+
 # Tiled nvim | agent split, plus jjui in a minimized floating layer.
 def add-window [session: string, name: string, dir: string] {
-  let split = {split: {direction: horizontal, ratio: 0.6, before: (block nvim $dir [nvim .]), after: (block agent $dir [claude])}}
+  let split = {split: {direction: horizontal, ratio: 0.6, before: (block nvim $dir (in-shell 'exec nvim .')), after: (block agent $dir (in-shell 'exec claude'))}}
   let win = (rex-call $session session.new_window {window_label: $name, layout: $split, focus: false})
-  let layer = (rex-call $session session.new_layer {window_id: $win.window_id, bounds: $JJUI_BOUNDS, layout: (block jjui $dir [sh -c 'while jjui; do :; done'])})
+  let layer = (rex-call $session session.new_layer {window_id: $win.window_id, bounds: $JJUI_BOUNDS, layout: (block jjui $dir (in-shell 'while jjui; do :; done'))})
   rex-call $session session.set_layer_state {layer_id: $layer.layer_id, state: minimized} | ignore
 }
 
@@ -202,7 +207,7 @@ def "main open" [set?: string] {
     $created.session_id
   }
   # No app attached (headless, or several): the session is still created.
-  try { rx do session.select $"session_id=($id)" } catch { print -e $"opened ($id); no app client to switch" }
+  try { rx do session.select $"session_id=($id)" } catch { print -e $"opened ($id); could not switch; enable Remote Control in Rex Settings > Rex Server" }
 }
 
 # Create a set from repositories (fzf when none are named), then open it.
