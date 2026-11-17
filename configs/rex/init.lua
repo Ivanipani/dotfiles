@@ -47,15 +47,8 @@ section = "Command"
 -- locked: ctrl+a enters command mode
 rex.bind("ctrl+a", enter_mode.command)
 
--- Exit keys: esc and ctrl+a lock again inside every mode except command, which
--- Rex leaves on esc by itself; binding them there would list "Exit All Modes" in the menu.
-for _, m in ipairs(modes) do
-  if m ~= "command" then
-    for _, key in ipairs({ "ctrl+a", "esc" }) do
-      rex.bind(m .. "/" .. key, "client.mode.exit_all")
-    end
-  end
-end
+-- No exit keys are bound in modes: Rex leaves a mode on esc by itself, and a
+-- binding would list "Exit All Modes" in every mode's menu.
 
 -- Global keys, outside any mode: alt+j/k change tab, alt+h/l change session,
 -- ctrl+h/j/k/l move pane focus
