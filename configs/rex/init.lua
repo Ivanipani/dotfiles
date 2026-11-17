@@ -157,7 +157,8 @@ end
 
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   alt+g jjui   alt+t scratch shell   alt+a claude   alt+w hide/show all floats
+--   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
 -- m hide, c center, z maximize, h/j/k/l move, shift+h/j/k/l resize, tab cycle.
@@ -308,12 +309,13 @@ end
 rex.action{ name = "workspace_jjui", title = "Toggle jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
 rex.action{ name = "float_scratch", title = "Toggle scratch shell", run = toggle_float("scratch", "exec zsh") }
 rex.action{ name = "float_claude", title = "Toggle claude", run = toggle_float("claude", "exec claude") }
+rex.action{ name = "float_codex", title = "Toggle codex", run = toggle_float("codex", "exec codex") }
 float_action("float_toggle_all", "Hide or show all floats", toggle_all, true)
 float_action("float_prev", "Focus previous float", cycle(-1), true)
 float_action("float_next", "Focus next float", cycle(1), true)
 
 for key, action in pairs({
-  ["alt+g"] = "workspace_jjui", ["alt+t"] = "float_scratch", ["alt+a"] = "float_claude",
+  ["alt+g"] = "workspace_jjui", ["alt+t"] = "float_scratch", ["alt+a"] = "float_claude", ["alt+c"] = "float_codex",
   ["alt+w"] = "float_toggle_all", ["alt+[Comma]"] = "float_prev", ["alt+[Period]"] = "float_next",
 }) do
   rex.bind(key, action)
