@@ -58,7 +58,7 @@ class Rex(Module):
     """Rex terminal multiplexer: modes and keybindings live in init.lua."""
 
     name = "rex"
-    requires = ("nu", "jj", "fzf")
+    requires = ("jj",)
 
     def enabled(self, host):
         return host.macos
@@ -70,4 +70,5 @@ class Rex(Module):
         yield Symlink(self.path("init.lua"), rex / "init.lua")
         yield Reload(rex / "init.lua")
         yield Dir(bindir)
-        yield Symlink(self.path("scripts", "rex-workspace"), bindir / "rex-workspace")
+        # Built by `task build` from src/rex-workspace.
+        yield Symlink(host.repo / "src" / "rex-workspace" / "target" / "release" / "rex-workspace", bindir / "rex-workspace")

@@ -119,17 +119,20 @@ rex.bind("scroll//", done("scroll_find", "Find", "client.find.open"))
 rex.bind("scroll/n", step("scroll_find_next", "Next match", "client.find.next"))
 rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.find.previous"))
 
--- workspace sets (rex-workspace): a float runs the picker, jjui is a float per project tab
-local function workspace_float(sub)
+-- workspace sets (rex-workspace): a near-fullscreen float runs the manager TUI.
+-- The TUI handles being outside a ws- session itself, so the float never dies on entry.
+local function workspace_float(action)
   return function(ctx)
+    local command = "exec rex-workspace"
+    if action ~= nil then command = command .. " tui --action " .. action end
     rex.call("session.new_layer", {
       session_id = ctx.session_id,
-      bounds = { 0.15, 0.2, 0.7, 0.6 },
+      bounds = { 0.03, 0.04, 0.94, 0.92 },
       focus = true,
       layout = { block = {
         flavor = "com.superlogical.terminal.shell",
         label = "workspace",
-        options = { command = { "zsh", "-lic", "exec rex-workspace " .. sub } },
+        options = { command = { "zsh", "-lic", command } },
       } },
     })
     rex.client.queue("client.mode.exit_all")
@@ -138,12 +141,12 @@ end
 
 section = "Workspace"
 local workspace_keys = {
-  o = { "open", "Open" }, n = { "new", "New" },
-  a = { "add", "Add repo" }, x = { "remove", "Remove repo" },
-  d = { "delete", "Delete" },
+  o = { "open", "Open", nil }, n = { "new", "New", "new" },
+  a = { "add", "Add repo", "add" }, x = { "remove", "Remove repo", "remove" },
+  d = { "delete", "Delete", "delete" },
 }
 for key, v in pairs(workspace_keys) do
-  rex.bind("workspace/" .. key, act("workspace_" .. v[1], v[2], workspace_float(v[1])))
+  rex.bind("workspace/" .. key, act("workspace_" .. v[1], v[2], workspace_float(v[3])))
 end
 
 -- Floats --------------------------------------------------------------------

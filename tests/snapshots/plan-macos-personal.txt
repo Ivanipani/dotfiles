@@ -31,7 +31,7 @@ nvim	symlink	ln -s $REPO/configs/nvim/config $HOME/.config/nvim
 rex	dir	mkdir -p $HOME/.config/rex
 rex	symlink	ln -s $REPO/configs/rex/init.lua $HOME/.config/rex/init.lua
 rex	dir	mkdir -p $HOME/.local/bin
-rex	symlink	ln -s $REPO/configs/rex/scripts/rex-workspace $HOME/.local/bin/rex-workspace
+rex	symlink	ln -s $REPO/src/rex-workspace/target/release/rex-workspace $HOME/.local/bin/rex-workspace
 term	dir	mkdir -p $HOME/.config/wezterm
 term	dir	mkdir -p $HOME/.config/ghostty
 term	render	render wezterm.lua.j2 -> $HOME/.config/wezterm/wezterm.lua (symlink)

@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   PLUGINS: zellij-sessionizer zellij-workspace
-  CLIS: repo-sync
+  CLIS: repo-sync rex-workspace
   TARGET: wasm32-wasip1
 
 tasks:
@@ -25,7 +25,7 @@ tasks:
     desc: Build everything and let dot link the results into place
     cmds:
       - task: build
-      - dot apply tools zellij
+      - dot apply tools zellij rex
 
   test:
     desc: Run every crate's tests

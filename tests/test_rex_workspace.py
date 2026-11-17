@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 from conftest import REPO
 
-SCRIPT = REPO / "configs" / "rex" / "scripts" / "rex-workspace"
+CRATE = REPO / "src" / "rex-workspace"
+BINARY = CRATE / "target" / "release" / "rex-workspace"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def built():
+    subprocess.run(["cargo", "build", "--release", "--manifest-path", str(CRATE / "Cargo.toml")], check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -24,7 +30,7 @@ def env(tmp_path):
 
 
 def run(env, *args):
-    return subprocess.run(["nu", str(SCRIPT), *args], env=env, capture_output=True, text=True)
+    return subprocess.run([str(BINARY), *args], env=env, capture_output=True, text=True)
 
 
 def projects(env, set_name="demo"):
@@ -94,6 +100,6 @@ def test_delete_without_confirmation_keeps_the_set(env):
     # GIVEN a set
     run(env, "add", "demo", "alpha")
     # WHEN delete is declined (no input)
-    subprocess.run(["nu", str(SCRIPT), "delete", "demo"], env=env, input="n\n", capture_output=True, text=True)
+    subprocess.run([str(BINARY), "delete", "demo"], env=env, input="n\n", capture_output=True, text=True)
     # THEN the set is untouched
     assert (Path(env["REX_WORKSPACES_DIR"]) / "demo").exists()
