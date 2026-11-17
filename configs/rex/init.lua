@@ -40,6 +40,14 @@ end
 rex.bind("alt+h", "client.tab.previous")
 rex.bind("alt+l", "client.tab.next")
 
+-- Global navigation (zellij "shared"): ctrl+h/j/k/l move pane focus in every mode
+for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
+  rex.bind("ctrl+" .. key, "pane.focus", { direction = dir })
+  for _, m in ipairs(modes) do
+    rex.bind(m .. "/ctrl+" .. key, "pane.focus", { direction = dir })
+  end
+end
+
 -- Mode switches: key -> mode, in the modes where zellij binds it
 local function switches(key, target, from)
   for _, m in ipairs(from) do
