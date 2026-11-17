@@ -106,3 +106,38 @@ def test_codex_notifications(repo, tmp_path, event, state, message):
     assert f"zellij-attention::{state}::42" in calls
     assert message in calls
     assert "Codex" in calls
+
+
+def _run_reek_check(repo, tmp_path, lint_exit, with_config=True):
+    for name, body in {
+        "jj": f'case "$1" in root) echo {tmp_path};; diff) echo a.py;; esac',
+        "reek": f'[ "$1" = lint ] && {{ echo "bad finding"; exit {lint_exit}; }}; exit 0',
+    }.items():
+        executable = tmp_path / name
+        executable.write_text(f"#!/bin/sh\n{body}\n")
+        executable.chmod(0o755)
+    if with_config:
+        (tmp_path / "reek.toml").write_text("")
+    (tmp_path / "a.py").write_text("")
+    return subprocess.run(
+        [str(repo / "configs/agents/hooks/reek-check.sh")],
+        input=json.dumps({"cwd": str(tmp_path)}),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"},
+    )
+
+
+def test_reek_check_blocks_when_lint_fails(repo, tmp_path):
+    result = _run_reek_check(repo, tmp_path, lint_exit=1)
+    assert json.loads(result.stdout)["decision"] == "block"
+    assert "bad finding" in json.loads(result.stdout)["reason"]
+
+
+def test_reek_check_allows_stop_when_lint_passes(repo, tmp_path):
+    assert _run_reek_check(repo, tmp_path, lint_exit=0).stdout == ""
+
+
+def test_reek_check_skips_projects_without_reek_toml(repo, tmp_path):
+    assert _run_reek_check(repo, tmp_path, lint_exit=1, with_config=False).stdout == ""
