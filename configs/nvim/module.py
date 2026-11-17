@@ -26,6 +26,8 @@ class Nvim(Module):
         yield uv_tool("ruff")
         yield uv_tool("ty")
         yield cargo("stylua")
+        yield brew("helm-ls", bin="helm_ls")
+        yield brew("yaml-language-server")
         if host.macos:
             yield brew("lua-language-server")
         yield cargo("nufmt", git="https://github.com/nushell/nufmt")

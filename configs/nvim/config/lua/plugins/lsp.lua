@@ -611,5 +611,14 @@ return {
             settings = { }
         }
         vim.lsp.enable("vtsls")
+
+        -- helm-ls.nvim sets the helm filetype; helm_ls proxies to yamlls.
+        vim.lsp.config["helm_ls"] = {
+            capabilities = capabilities,
+            settings = {
+                ['helm-ls'] = { yamlls = { path = 'yaml-language-server' } },
+            },
+        }
+        vim.lsp.enable("helm_ls")
     end
 }
