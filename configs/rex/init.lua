@@ -117,14 +117,6 @@ rex.bind("scroll//", done("scroll_find", "Find", "client.find.open"))
 rex.bind("scroll/n", step("scroll_find_next", "Next match", "client.find.next"))
 rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.find.previous"))
 
--- resize (grow) and move
-for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
-  section = "Resize"
-  rex.bind("resize/" .. key, step("resize_" .. dir, "Resize " .. dir, "pane.resize", { direction = dir }))
-  section = "Move"
-  rex.bind("move/" .. key, step("move_" .. dir, "Move " .. dir, "pane.move", { direction = dir }))
-end
-
 -- workspace sets (rex-workspace): a float runs the picker, jjui is a float per project tab
 local function workspace_float(sub)
   return function(ctx)
@@ -158,7 +150,8 @@ end
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
--- m hide, c center, z maximize, h/j/k/l move, shift+h/j/k/l resize, tab cycle.
+-- m hide, c center, z maximize, tab cycle, l back. Moving and resizing a float
+-- is done in the move and resize modes, which act on the focused float.
 
 local TERMINAL = "com.superlogical.terminal"
 local STEP = 0.05
@@ -359,6 +352,9 @@ float_key("space", "float_raise", "Raise float", function(ctx, win)
   if layer then call(ctx, "session.raise_layer", { layer_id = layer.layer_id }) end
 end, true)
 
+rex.bind("float/l", enter_mode.command)
+
+-- resize and move modes: act on the focused float, else on the tiled pane
 local moves = {
   h = { "left",  function(x, y, w, h) return x - STEP, y, w, h end },
   j = { "down",  function(x, y, w, h) return x, y + STEP, w, h end },
@@ -366,14 +362,30 @@ local moves = {
   l = { "right", function(x, y, w, h) return x + STEP, y, w, h end },
 }
 local sizes = {
-  h = { "narrower", function(x, y, w, h) return x, y, w - STEP, h end },
-  j = { "taller",   function(x, y, w, h) return x, y, w, h + STEP end },
-  k = { "shorter",  function(x, y, w, h) return x, y, w, h - STEP end },
-  l = { "wider",    function(x, y, w, h) return x, y, w + STEP, h end },
+  h = { "left",  function(x, y, w, h) return x, y, w - STEP, h end },
+  j = { "down",  function(x, y, w, h) return x, y, w, h + STEP end },
+  k = { "up",    function(x, y, w, h) return x, y, w, h - STEP end },
+  l = { "right", function(x, y, w, h) return x, y, w + STEP, h end },
 }
-for key, v in pairs(moves) do
-  float_key(key, "float_move_" .. v[1], "Move " .. v[1], reshape(v[2]), true)
+
+local function float_or_pane(name, title, change, action, dir)
+  local on_float = reshape(change)
+  rex.action{
+    name = name, title = title, category = section,
+    run = function(ctx)
+      local win = active_window(ctx)
+      if focused_float(win) then on_float(ctx, win)
+      else rex.client.queue(action, { direction = dir }) end
+    end,
+  }
+  return name
 end
+
 for key, v in pairs(sizes) do
-  float_key("shift+" .. key, "float_size_" .. v[1], v[1]:sub(1, 1):upper() .. v[1]:sub(2), reshape(v[2]), true)
+  section = "Resize"
+  rex.bind("resize/" .. key, float_or_pane("resize_" .. v[1], "Resize " .. v[1], v[2], "pane.resize", v[1]))
+end
+for key, v in pairs(moves) do
+  section = "Move"
+  rex.bind("move/" .. key, float_or_pane("move_" .. v[1], "Move " .. v[1], v[2], "pane.move", v[1]))
 end
