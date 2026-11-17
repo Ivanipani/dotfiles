@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -144,3 +145,181 @@ def test_reek_check_skips_projects_without_reek_toml(repo, tmp_path):
 def test_reek_check_finds_config_in_reekcfg_dir(repo, tmp_path):
     result = _run_reek_check(repo, tmp_path, lint_exit=1, config="reekcfg/reek.toml")
     assert json.loads(result.stdout)["decision"] == "block"
+
+
+# --- quota guard / handoff -------------------------------------------------
+
+FUTURE = 4_000_000_000
+PAST = 1_000_000_000
+
+
+def _hook(repo, tmp_path, script, payload, *args):
+    return subprocess.run(
+        [str(repo / "configs/agents/hooks" / script), *args],
+        input=json.dumps({"cwd": str(tmp_path), "session_id": "s1", **payload}),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "AGENT_STATE_DIR": str(tmp_path / "state")},
+    )
+
+
+def _claude_quota(tmp_path, used, resets_at=FUTURE):
+    cache = tmp_path / "state/quota/claude.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(
+        json.dumps({"five_hour": {"used_percentage": used, "resets_at": resets_at}})
+    )
+
+
+def _codex_transcript(tmp_path, used, resets_at=FUTURE, with_limits=True):
+    event = {"type": "event_msg", "payload": {"type": "token_count", "info": {}}}
+    if with_limits:
+        event["payload"]["rate_limits"] = {
+            "primary": {"used_percent": used, "resets_at": resets_at},
+            "secondary": {"used_percent": 1.0, "resets_at": FUTURE},
+        }
+    transcript = tmp_path / "rollout.jsonl"
+    transcript.write_text(json.dumps(event) + "\n")
+    return str(transcript)
+
+
+def _write_handoff(repo, tmp_path):
+    script = f'. "{repo}/configs/agents/hooks/agent-state.sh"; handoff_path "{tmp_path}"'
+    path = subprocess.run(
+        ["sh", "-c", script],
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "AGENT_STATE_DIR": str(tmp_path / "state")},
+    ).stdout.strip()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("work")
+    return Path(path)
+
+
+def _claude_guard(repo, tmp_path, event="PostToolUse", **payload):
+    return _hook(repo, tmp_path, "quota-guard.sh", {"hook_event_name": event, **payload}, "claude")
+
+
+def test_quota_guard_nudges_when_claude_usage_is_over_threshold(repo, tmp_path):
+    _claude_quota(tmp_path, 94.0)
+    output = json.loads(_claude_guard(repo, tmp_path).stdout)["hookSpecificOutput"]
+    assert output["hookEventName"] == "PostToolUse"
+    assert "94%" in output["additionalContext"]
+    assert "handoff" in output["additionalContext"]
+
+
+def test_quota_guard_is_silent_when_claude_usage_is_under_threshold(repo, tmp_path):
+    _claude_quota(tmp_path, 40.0)
+    assert _claude_guard(repo, tmp_path).stdout == ""
+
+
+def test_quota_guard_ignores_a_claude_window_that_already_reset(repo, tmp_path):
+    _claude_quota(tmp_path, 99.0, resets_at=PAST)
+    assert _claude_guard(repo, tmp_path).stdout == ""
+
+
+def test_quota_guard_is_silent_when_claude_quota_was_never_cached(repo, tmp_path):
+    assert _claude_guard(repo, tmp_path).stdout == ""
+
+
+def test_quota_guard_nudges_only_once_per_session(repo, tmp_path):
+    _claude_quota(tmp_path, 94.0)
+    _claude_guard(repo, tmp_path)
+    assert _claude_guard(repo, tmp_path).stdout == ""
+
+
+def test_quota_guard_respects_threshold_override(repo, tmp_path, monkeypatch):
+    _claude_quota(tmp_path, 40.0)
+    monkeypatch.setenv("AGENT_QUOTA_THRESHOLD", "30")
+    assert _claude_guard(repo, tmp_path).stdout != ""
+
+
+def test_quota_guard_blocks_stop_when_no_handoff_was_written(repo, tmp_path):
+    _claude_quota(tmp_path, 94.0)
+    result = json.loads(_claude_guard(repo, tmp_path, event="Stop", stop_hook_active=False).stdout)
+    assert result["decision"] == "block"
+    assert "handoff" in result["reason"]
+
+
+def test_quota_guard_allows_stop_once_handoff_is_newer_than_the_nudge(repo, tmp_path):
+    _claude_quota(tmp_path, 94.0)
+    _claude_guard(repo, tmp_path)
+    handoff = _write_handoff(repo, tmp_path)
+    os.utime(handoff, (FUTURE, FUTURE))
+    assert _claude_guard(repo, tmp_path, event="Stop", stop_hook_active=False).stdout == ""
+
+
+def test_quota_guard_does_not_loop_on_stop_retry(repo, tmp_path):
+    _claude_quota(tmp_path, 94.0)
+    assert _claude_guard(repo, tmp_path, event="Stop", stop_hook_active=True).stdout == ""
+
+
+def test_quota_guard_is_silent_on_stop_when_usage_is_under_threshold(repo, tmp_path):
+    _claude_quota(tmp_path, 10.0)
+    assert _claude_guard(repo, tmp_path, event="Stop", stop_hook_active=False).stdout == ""
+
+
+def _codex_guard(repo, tmp_path, transcript, event="PostToolUse"):
+    return _hook(
+        repo,
+        tmp_path,
+        "quota-guard.sh",
+        {"hook_event_name": event, "transcript_path": transcript},
+        "codex",
+    )
+
+
+def test_quota_guard_nudges_when_codex_rollout_reports_usage_over_threshold(repo, tmp_path):
+    output = json.loads(_codex_guard(repo, tmp_path, _codex_transcript(tmp_path, 95.0)).stdout)
+    assert "95%" in output["hookSpecificOutput"]["additionalContext"]
+
+
+def test_quota_guard_is_silent_when_codex_usage_is_under_threshold(repo, tmp_path):
+    assert _codex_guard(repo, tmp_path, _codex_transcript(tmp_path, 12.0)).stdout == ""
+
+
+def test_quota_guard_is_silent_when_codex_rollout_has_no_rate_limits(repo, tmp_path):
+    transcript = _codex_transcript(tmp_path, 0, with_limits=False)
+    assert _codex_guard(repo, tmp_path, transcript).stdout == ""
+
+
+def test_quota_statusline_caches_rate_limits_for_the_guard(repo, tmp_path):
+    limits = {"five_hour": {"used_percentage": 25, "resets_at": FUTURE}}
+    _hook(repo, tmp_path, "quota-statusline.sh", {"rate_limits": limits})
+    assert json.loads((tmp_path / "state/quota/claude.json").read_text()) == limits
+
+
+def test_quota_statusline_prints_a_usage_summary(repo, tmp_path):
+    limits = {
+        "five_hour": {"used_percentage": 25, "resets_at": FUTURE},
+        "seven_day": {"used_percentage": 47.6, "resets_at": FUTURE},
+    }
+    result = _hook(repo, tmp_path, "quota-statusline.sh", {"rate_limits": limits})
+    assert result.stdout.strip() == "5h:25% 7d:47%"
+
+
+def test_quota_statusline_leaves_cache_alone_without_rate_limits(repo, tmp_path):
+    _hook(repo, tmp_path, "quota-statusline.sh", {})
+    assert not (tmp_path / "state/quota/claude.json").exists()
+
+
+def test_handoff_context_points_new_session_at_a_recent_handoff(repo, tmp_path):
+    handoff = _write_handoff(repo, tmp_path)
+    assert str(handoff) in _hook(repo, tmp_path, "handoff-context.sh", {}).stdout
+
+
+def test_handoff_context_is_silent_without_a_handoff(repo, tmp_path):
+    assert _hook(repo, tmp_path, "handoff-context.sh", {}).stdout == ""
+
+
+def test_quota_guard_borrows_codex_quota_from_a_recent_rollout_in_a_fresh_session(repo, tmp_path):
+    sessions = tmp_path / "codex/sessions/2026/11/16"
+    sessions.mkdir(parents=True)
+    (sessions / "rollout-old.jsonl").write_text(Path(_codex_transcript(tmp_path, 95.0)).read_text())
+    fresh = sessions / "rollout-fresh.jsonl"
+    fresh.write_text(Path(_codex_transcript(tmp_path, 0, with_limits=False)).read_text())
+    output = json.loads(_codex_guard(repo, tmp_path, str(fresh), event="UserPromptSubmit").stdout)
+    assert "95%" in output["hookSpecificOutput"]["additionalContext"]

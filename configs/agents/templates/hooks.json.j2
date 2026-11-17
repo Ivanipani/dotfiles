@@ -6,10 +6,16 @@
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/jj-context.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/handoff-context.sh\""
           }
         ]
       }
     ],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}]}],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -46,6 +52,10 @@
             "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"
           },
 {% endif %}
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"
+          },
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/reek-check.sh\""
