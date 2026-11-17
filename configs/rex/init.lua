@@ -8,8 +8,10 @@ end
 
 -- The stepper lists each key by its action's title, so every key that needs a
 -- wrapper gets its own short, specific action instead of a generic one.
+-- `section` is the menu section (category) of every action defined after it.
+local section = "Modes"
 local function act(name, title, run)
-  rex.action{ name = name, title = title, run = run }
+  rex.action{ name = name, title = title, category = section, run = run }
   return name
 end
 
@@ -36,45 +38,33 @@ for m, title in pairs(mode_titles) do
 end
 local lock = act("lock", "Exit", function() rex.client.queue("client.mode.exit_all") end)
 
+section = "Command"
+
 -- locked: ctrl+a enters command mode
 rex.bind("ctrl+a", enter_mode.command)
 
--- Keys in every mode: esc, enter and ctrl+a lock again; alt+j/k change tab,
--- alt+h/l change session
-local nav = {
-  ["alt+k"] = "client.tab.previous", ["alt+j"] = "client.tab.next",
-  ["alt+h"] = "session.previous",    ["alt+l"] = "session.next",
-}
+-- Exit keys: esc and ctrl+a lock again inside every mode
 for _, m in ipairs(modes) do
-  for _, key in ipairs({ "ctrl+a", "enter", "esc" }) do
+  for _, key in ipairs({ "ctrl+a", "esc" }) do
     rex.bind(m .. "/" .. key, lock)
   end
-  for key, action in pairs(nav) do rex.bind(m .. "/" .. key, action) end
 end
-for key, action in pairs(nav) do rex.bind(key, action) end
 
--- Global navigation (zellij "shared"): ctrl+h/j/k/l move pane focus in every mode
+-- Global keys, outside any mode: alt+j/k change tab, alt+h/l change session,
+-- ctrl+h/j/k/l move pane focus
+for key, action in pairs({
+  ["alt+k"] = "client.tab.previous", ["alt+j"] = "client.tab.next",
+  ["alt+h"] = "session.previous",    ["alt+l"] = "session.next",
+}) do rex.bind(key, action) end
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
   rex.bind("ctrl+" .. key, "pane.focus", { direction = dir })
-  for _, m in ipairs(modes) do
-    rex.bind(m .. "/ctrl+" .. key, "pane.focus", { direction = dir })
-  end
 end
 
--- Mode switches: key -> mode, in the modes where zellij binds it
-local function switches(key, target, from)
-  for _, m in ipairs(from) do
-    rex.bind(m .. "/" .. key, enter_mode[target])
-  end
+-- Mode switches from command mode
+for key, target in pairs({ m = "move", o = "session", t = "tab", p = "pane", s = "scroll",
+                           r = "resize", w = "workspace", l = "float" }) do
+  rex.bind("command/" .. key, enter_mode[target])
 end
-switches("m", "move",    { "command", "pane", "tab", "resize", "scroll", "session", "workspace" })
-switches("o", "session", { "command", "pane", "tab", "resize", "move", "scroll" })
-switches("t", "tab",     { "command", "pane", "resize", "move", "scroll", "session", "workspace" })
-switches("p", "pane",    { "command", "tab", "resize", "scroll", "workspace" })
-switches("s", "scroll",  { "command", "resize", "move" })
-switches("r", "resize",  { "command", "move", "scroll", "session", "workspace" })
-switches("w", "workspace", { "command", "pane", "tab", "resize", "move", "scroll", "session" })
-switches("l", "float",   { "command" })
 
 -- Back to command mode (zellij "normal")
 for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scroll", o = "session", w = "workspace" }) do
@@ -91,6 +81,7 @@ end
 rex.bind("command/f", done("go_to", "Go to pane or tab", "pane.go_to"))
 
 -- pane
+section = "Pane"
 rex.bind("pane/f", done("pane_zoom", "Zoom pane", "pane.zoom"))
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
   rex.bind("pane/" .. key, done("split_" .. dir, "Split " .. dir, "pane.split", { direction = dir }))
@@ -99,6 +90,7 @@ rex.bind("pane/r", done("pane_rename", "Rename pane", "pane.rename"))
 rex.bind("pane/d", done("pane_close", "Close pane", "pane.close"))
 
 -- tab
+section = "Tab"
 rex.bind("tab/b", done("pane_to_tab", "Move pane to new tab", "pane.move_to_new_tab"))
 rex.bind("tab/h", "client.tab.previous")
 rex.bind("tab/l", "client.tab.next")
@@ -107,6 +99,7 @@ rex.bind("tab/r", done("tab_rename", "Rename tab", "client.tab.rename"))
 rex.bind("tab/d", done("tab_close", "Close tab", "client.tab.close"))
 
 -- session
+section = "Session"
 rex.bind("session/j", "session.next")
 rex.bind("session/k", "session.previous")
 rex.bind("session/f", done("session_pick", "Switch session", "session.switch"))
@@ -115,6 +108,7 @@ rex.bind("session/r", done("session_rename", "Rename session", "session.rename")
 rex.bind("session/d", done("session_close", "Close session", "session.close"))
 
 -- scroll (rex scrolls by page)
+section = "Scroll"
 rex.bind("scroll/j", "client.scroll.page_down")
 rex.bind("scroll/k", "client.scroll.page_up")
 rex.bind("scroll/ctrl+d", "client.scroll.page_down")
@@ -146,6 +140,7 @@ local function workspace_float(sub)
   end
 end
 
+section = "Workspace"
 local workspace_keys = {
   o = { "open", "Open workspace" }, n = { "new", "New workspace" },
   a = { "add", "Add repo to workspace" }, x = { "remove", "Remove repo from workspace" },
@@ -254,10 +249,12 @@ local function toggle_float(label, command, bounds)
   end
 end
 
+section = "Float"
+
 -- A float action; `stay` keeps the current key mode active afterwards.
 local function float_action(name, title, fn, stay)
   rex.action{
-    name = name, title = title,
+    name = name, title = title, category = section,
     run = function(ctx)
       fn(ctx, active_window(ctx))
       if not stay then rex.client.queue("client.mode.exit_all") end
@@ -306,10 +303,10 @@ local function toggle_all(ctx, win)
   end
 end
 
-rex.action{ name = "workspace_jjui", title = "Toggle jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
-rex.action{ name = "float_scratch", title = "Toggle scratch shell", run = toggle_float("scratch", "exec zsh") }
-rex.action{ name = "float_claude", title = "Toggle claude", run = toggle_float("claude", "exec claude") }
-rex.action{ name = "float_codex", title = "Toggle codex", run = toggle_float("codex", "exec codex") }
+rex.action{ name = "workspace_jjui", category = section, title = "Toggle jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
+rex.action{ name = "float_scratch", category = section, title = "Toggle scratch shell", run = toggle_float("scratch", "exec zsh") }
+rex.action{ name = "float_claude", category = section, title = "Toggle claude", run = toggle_float("claude", "exec claude") }
+rex.action{ name = "float_codex", category = section, title = "Toggle codex", run = toggle_float("codex", "exec codex") }
 float_action("float_toggle_all", "Hide or show all floats", toggle_all, true)
 float_action("float_prev", "Focus previous float", cycle(-1), true)
 float_action("float_next", "Focus next float", cycle(1), true)
