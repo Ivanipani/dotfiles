@@ -15,11 +15,12 @@ local function act(name, title, run)
   return name
 end
 
--- Run an action, then leave every mode.
+-- Leave every mode, then run an action. Leaving first keeps a picker the action
+-- opens (go to, switch session) from being dismissed by the mode exit.
 local function done(name, title, action, args)
   return act(name, title, function()
-    rex.client.queue(action, args or {})
     rex.client.queue("client.mode.exit_all")
+    rex.client.queue(action, args or {})
   end)
 end
 
