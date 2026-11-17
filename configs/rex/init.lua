@@ -23,6 +23,11 @@ local function done(name, title, action, args)
   end)
 end
 
+-- Run an action and stay in the mode.
+local function step(name, title, action, args)
+  return act(name, title, function() rex.client.queue(action, args or {}) end)
+end
+
 -- Leave every mode and enter another.
 local mode_titles = {
   command = "Command", pane = "Pane", tab = "Tab", resize = "Resize",
@@ -36,17 +41,17 @@ for m, title in pairs(mode_titles) do
     rex.client.queue("client.mode.enter", { name = m })
   end)
 end
-local lock = act("lock", "Exit", function() rex.client.queue("client.mode.exit_all") end)
 
 section = "Command"
 
 -- locked: ctrl+a enters command mode
 rex.bind("ctrl+a", enter_mode.command)
 
--- Exit keys: esc and ctrl+a lock again inside every mode
+-- Exit keys: esc and ctrl+a lock again inside every mode. Bound to the built-in
+-- action, not a titled wrapper, so the menu does not suggest them.
 for _, m in ipairs(modes) do
   for _, key in ipairs({ "ctrl+a", "esc" }) do
-    rex.bind(m .. "/" .. key, lock)
+    rex.bind(m .. "/" .. key, "client.mode.exit_all")
   end
 end
 
@@ -92,16 +97,16 @@ rex.bind("pane/d", done("pane_close", "Close pane", "pane.close"))
 -- tab
 section = "Tab"
 rex.bind("tab/b", done("pane_to_tab", "Move pane to new tab", "pane.move_to_new_tab"))
-rex.bind("tab/h", "client.tab.previous")
-rex.bind("tab/l", "client.tab.next")
+rex.bind("tab/h", step("tab_previous", "Previous tab", "client.tab.previous"))
+rex.bind("tab/l", step("tab_next", "Next tab", "client.tab.next"))
 rex.bind("tab/n", done("tab_new", "New tab", "client.tab.new"))
 rex.bind("tab/r", done("tab_rename", "Rename tab", "client.tab.rename"))
 rex.bind("tab/d", done("tab_close", "Close tab", "client.tab.close"))
 
 -- session
 section = "Session"
-rex.bind("session/j", "session.next")
-rex.bind("session/k", "session.previous")
+rex.bind("session/j", step("session_next", "Next session", "session.next"))
+rex.bind("session/k", step("session_previous", "Previous session", "session.previous"))
 rex.bind("session/f", done("session_pick", "Switch session", "session.switch"))
 rex.bind("session/n", done("session_new", "New session", "session.new"))
 rex.bind("session/r", done("session_rename", "Rename session", "session.rename"))
@@ -109,18 +114,22 @@ rex.bind("session/d", done("session_close", "Close session", "session.close"))
 
 -- scroll (rex scrolls by page)
 section = "Scroll"
-rex.bind("scroll/j", "client.scroll.page_down")
-rex.bind("scroll/k", "client.scroll.page_up")
-rex.bind("scroll/ctrl+d", "client.scroll.page_down")
-rex.bind("scroll/ctrl+u", "client.scroll.page_up")
+local page_down = step("scroll_page_down", "Page down", "client.scroll.page_down")
+local page_up = step("scroll_page_up", "Page up", "client.scroll.page_up")
+rex.bind("scroll/j", page_down)
+rex.bind("scroll/k", page_up)
+rex.bind("scroll/ctrl+d", page_down)
+rex.bind("scroll/ctrl+u", page_up)
 rex.bind("scroll//", done("scroll_find", "Find", "client.find.open"))
-rex.bind("scroll/n", "client.find.next")
-rex.bind("scroll/shift+n", "client.find.previous")
+rex.bind("scroll/n", step("scroll_find_next", "Next match", "client.find.next"))
+rex.bind("scroll/shift+n", step("scroll_find_previous", "Previous match", "client.find.previous"))
 
 -- resize (grow) and move
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
-  rex.bind("resize/" .. key, "pane.resize", { direction = dir })
-  rex.bind("move/" .. key, "pane.move", { direction = dir })
+  section = "Resize"
+  rex.bind("resize/" .. key, step("resize_" .. dir, "Resize " .. dir, "pane.resize", { direction = dir }))
+  section = "Move"
+  rex.bind("move/" .. key, step("move_" .. dir, "Move pane " .. dir, "pane.move", { direction = dir }))
 end
 
 -- workspace sets (rex-workspace): a float runs the picker, jjui is a float per project tab
@@ -318,7 +327,9 @@ for key, action in pairs({
   rex.bind(key, action)
   rex.bind("command/" .. key, action)
 end
+section = "Workspace"
 rex.bind("workspace/j", done("jjui_toggle", "Toggle jjui", "workspace_jjui"))
+section = "Float"
 
 -- float mode
 local function float_key(key, name, title, fn, stay)
