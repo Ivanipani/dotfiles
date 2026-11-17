@@ -24,24 +24,6 @@
 {% if client == "claude" %}
     "Notification": [
       {
-        "matcher": "permission_prompt|idle_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.{{ client }}/hooks/attention.sh\" waiting"
-          }
-        ]
-      },
-      {
-        "matcher": "agent_completed",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.{{ client }}/hooks/attention.sh\" completed"
-          }
-        ]
-      },
-      {
         "matcher": "permission_prompt|idle_prompt|agent_needs_input|agent_completed|elicitation_dialog|elicitation_url_dialog|quota_auto_resume_fired|quota_auto_resume_stale",
         "hooks": [
           {
@@ -58,10 +40,12 @@
     "Stop": [
       {
         "hooks": [
+{% if client == "codex" %}
           {
             "type": "command",
-            "command": {% if client == "codex" %}"\"$HOME/.codex/hooks/notify.sh\" Codex"{% else %}"\"$HOME/.claude/hooks/attention.sh\" completed"{% endif %}
+            "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"
           },
+{% endif %}
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/reek-check.sh\""

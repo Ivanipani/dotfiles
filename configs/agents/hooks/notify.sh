@@ -21,14 +21,6 @@ if [ -z "$message" ]; then
   esac
 fi
 
-# Codex has lifecycle events instead of Claude's Notification event.
-if [ "${1:-}" = "Codex" ]; then
-  case "$kind" in
-    Stop | SubagentStop) state=completed ;;
-    *) state=waiting ;;
-  esac
-  "$(dirname "$0")/attention.sh" "$state"
-fi
 command -v osascript >/dev/null 2>&1 || exit 0
 
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')

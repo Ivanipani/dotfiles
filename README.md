@@ -36,7 +36,7 @@ dot apply claude codex
 
 The jj context, command guard, and commit reminder run in both clients.
 Codex maps permission requests, subagent completion, and turn completion to
-shared desktop notifications and Zellij attention updates. Claude retains its
+shared desktop notifications. Claude retains its
 additional notification events (including idle and quota notifications).
 See the [Codex hook reference](https://learn.chatgpt.com/docs/hooks) for event
 coverage. After applying, review and trust the Codex hooks with `/hooks`.

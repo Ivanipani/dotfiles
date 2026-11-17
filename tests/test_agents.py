@@ -75,16 +75,16 @@ def test_stop_does_not_loop(repo):
 
 
 @pytest.mark.parametrize(
-    "event,state,message",
+    "event,message",
     [
-        ("PermissionRequest", "waiting", "Needs permission to continue"),
-        ("SubagentStop", "completed", "An agent finished"),
-        ("Stop", "completed", "Finished responding"),
+        ("PermissionRequest", "Needs permission to continue"),
+        ("SubagentStop", "An agent finished"),
+        ("Stop", "Finished responding"),
     ],
 )
-def test_codex_notifications(repo, tmp_path, event, state, message):
+def test_codex_notifications(repo, tmp_path, event, message):
     log = tmp_path / "calls"
-    for name in ("zellij", "osascript"):
+    for name in ("osascript",):
         executable = tmp_path / name
         executable.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >> "$HOOK_TEST_LOG"\n')
         executable.chmod(0o755)
@@ -98,12 +98,9 @@ def test_codex_notifications(repo, tmp_path, event, state, message):
             **os.environ,
             "PATH": f"{tmp_path}:{os.environ['PATH']}",
             "HOOK_TEST_LOG": str(log),
-            "ZELLIJ": "1",
-            "ZELLIJ_PANE_ID": "42",
         },
     )
     calls = log.read_text()
-    assert f"zellij-attention::{state}::42" in calls
     assert message in calls
     assert "Codex" in calls
 
