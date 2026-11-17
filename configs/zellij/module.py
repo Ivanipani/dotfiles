@@ -16,17 +16,6 @@ PLUGINS = (
         ("ReadApplicationState", "ChangeApplicationState", "WriteToStdin"),
     ),
     (
-        "zellij-attention",
-        "https://github.com/KiryuuLight/zellij-attention/releases/download/v0.3.1/zellij-attention.wasm",
-        "4209337ab61a731448ec733362f3ef699a905bbb5c0112a93a6d616360fd722f",
-        (
-            "ReadApplicationState",
-            "ChangeApplicationState",
-            "ReadCliPipes",
-            "MessageAndLaunchOtherPlugins",
-        ),
-    ),
-    (
         "zjstatus",
         "https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm",
         "282ceab219e56e1908c9fac33907241fe6c3e1ef7d85faab3e5f438cef87b8fe",

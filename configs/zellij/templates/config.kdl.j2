@@ -395,12 +395,6 @@ plugins {
 // eg. "https://example.com/my-plugin.wasm"
 load_plugins {
     navigator
-    "file:{{ host.xdg_config }}/zellij/plugins/zellij-attention.wasm" {
-        // All options are optional — defaults shown
-        enabled "true"
-        waiting_icon "⏳"
-        completed_icon "✅"
-    }
 }
 web_client {
     font "monospace"
