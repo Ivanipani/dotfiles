@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop hook: in a project that uses reek (reek.toml at its root), format and lint
+# Stop hook: in a project that uses reek (reek.toml at its root or in reekcfg/), format and lint
 # the files changed in the jj working copy. Formatting is applied silently; lint
 # failures are fed back to the agent to fix.
 set -eu
@@ -19,7 +19,7 @@ fi
 command -v reek >/dev/null 2>&1 || exit 0
 command -v jj >/dev/null 2>&1 || exit 0
 root=$(jj root 2>/dev/null) || exit 0
-[ -f "$root/reek.toml" ] || exit 0
+[ -f "$root/reek.toml" ] || [ -f "$root/reekcfg/reek.toml" ] || exit 0
 cd "$root"
 
 # Only check files that still exist; deleted paths are not valid targets.

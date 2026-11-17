@@ -108,7 +108,7 @@ def test_codex_notifications(repo, tmp_path, event, state, message):
     assert "Codex" in calls
 
 
-def _run_reek_check(repo, tmp_path, lint_exit, with_config=True):
+def _run_reek_check(repo, tmp_path, lint_exit, config="reek.toml"):
     for name, body in {
         "jj": f'case "$1" in root) echo {tmp_path};; diff) echo a.py;; esac',
         "reek": f'[ "$1" = lint ] && {{ echo "bad finding"; exit {lint_exit}; }}; exit 0',
@@ -116,8 +116,9 @@ def _run_reek_check(repo, tmp_path, lint_exit, with_config=True):
         executable = tmp_path / name
         executable.write_text(f"#!/bin/sh\n{body}\n")
         executable.chmod(0o755)
-    if with_config:
-        (tmp_path / "reek.toml").write_text("")
+    if config:
+        (tmp_path / config).parent.mkdir(exist_ok=True)
+        (tmp_path / config).write_text("")
     (tmp_path / "a.py").write_text("")
     return subprocess.run(
         [str(repo / "configs/agents/hooks/reek-check.sh")],
@@ -140,4 +141,9 @@ def test_reek_check_allows_stop_when_lint_passes(repo, tmp_path):
 
 
 def test_reek_check_skips_projects_without_reek_toml(repo, tmp_path):
-    assert _run_reek_check(repo, tmp_path, lint_exit=1, with_config=False).stdout == ""
+    assert _run_reek_check(repo, tmp_path, lint_exit=1, config=None).stdout == ""
+
+
+def test_reek_check_finds_config_in_reekcfg_dir(repo, tmp_path):
+    result = _run_reek_check(repo, tmp_path, lint_exit=1, config="reekcfg/reek.toml")
+    assert json.loads(result.stdout)["decision"] == "block"
