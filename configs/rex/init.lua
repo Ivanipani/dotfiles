@@ -77,7 +77,8 @@ rex.bind("alt+i", "client.tab.move", { direction = "backward" })
 rex.bind("alt+o", "client.tab.move", { direction = "forward" })
 rex.bind("alt+n", "pane.split", { direction = "auto" })
 rex.bind("alt+f", "pane.go_to")
-rex.bind("command/f", done("go_to", "Go to", "pane.go_to"))
+-- Bound directly (not queued): a queued pane.go_to never opens the switcher.
+rex.bind("command/f", "pane.go_to")
 
 -- pane
 section = "Pane"
