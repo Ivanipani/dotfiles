@@ -38,11 +38,11 @@ local lock = act("lock", "Exit", function() rex.client.queue("client.mode.exit_a
 -- locked: ctrl+a enters command mode
 rex.bind("ctrl+a", enter_mode.command)
 
--- Keys in every mode: esc, enter and ctrl+a lock again; alt+h/l change tab,
--- alt+j/k change session
+-- Keys in every mode: esc, enter and ctrl+a lock again; alt+j/k change tab,
+-- alt+h/l change session
 local nav = {
-  ["alt+h"] = "client.tab.previous", ["alt+l"] = "client.tab.next",
-  ["alt+k"] = "session.previous",    ["alt+j"] = "session.next",
+  ["alt+k"] = "client.tab.previous", ["alt+j"] = "client.tab.next",
+  ["alt+h"] = "session.previous",    ["alt+l"] = "session.next",
 }
 for _, m in ipairs(modes) do
   for _, key in ipairs({ "ctrl+a", "enter", "esc" }) do
