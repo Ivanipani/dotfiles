@@ -12,7 +12,10 @@ use crate::rex::Rex;
 use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyEventKind};
 use std::io::IsTerminal;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// The hub stays open for hours; keep it current without a keypress.
+const REFRESH: Duration = Duration::from_secs(5);
 
 /// Run the TUI; returns lines to print after the terminal is restored.
 pub fn run(env: Env, rex: Rex, launch: Launch) -> Result<Vec<String>> {
@@ -29,7 +32,12 @@ pub fn run(env: Env, rex: Rex, launch: Launch) -> Result<Vec<String>> {
 }
 
 fn event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut app::App) -> Result<()> {
+    let mut refreshed = Instant::now();
     while !app.quit {
+        if app.hub && app.modal.is_none() && refreshed.elapsed() >= REFRESH {
+            app.reload(None);
+            refreshed = Instant::now();
+        }
         app.drain_details();
         terminal.draw(|f| ui::render(f, app))?;
         if let Some(job) = app.pending.take() {

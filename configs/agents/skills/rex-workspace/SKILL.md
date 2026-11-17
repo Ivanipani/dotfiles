@@ -29,4 +29,4 @@ Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `E
 
 ## Rex keys
 
-`ctrl+a w` toggles the manager as a near-fullscreen float, from any tab or session; it closes when the TUI quits. `alt+g` toggles jjui.
+One shared Rex session named `workspaces` hosts the manager for the whole app, created on first use. `ctrl+a w` jumps to it from any session and back again; inside the manager `q`/`Esc` also goes back, and opening a set switches to it while the manager stays running (it refreshes every few seconds). `alt+g` toggles jjui.

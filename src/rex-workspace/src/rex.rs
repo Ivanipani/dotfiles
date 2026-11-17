@@ -6,6 +6,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const FALLBACK: &str = "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex";
+/// The one session that hosts the manager TUI for the whole Rex app.
+pub const HUB_LABEL: &str = "workspaces";
+/// The init.lua action that jumps to the hub, or back from it.
+pub const TOGGLE_ACTION: &str = "workspace_toggle_plain";
 const SHELL_FLAVOR: &str = "com.superlogical.terminal.shell";
 const JJUI_BOUNDS: [f64; 4] = [0.05, 0.05, 0.9, 0.9];
 
@@ -75,11 +79,18 @@ impl Rex {
 
     /// Switch the attached app to a session. Errors when no app is attached (or several).
     pub fn select(&self, session: &str) -> Result<()> {
+        self.perform(&["session.select", &format!("session_id={session}")])
+    }
+
+    /// Run an action on the attached app, e.g. one defined in init.lua.
+    pub fn perform(&self, action_and_args: &[&str]) -> Result<()> {
         let client = match std::env::var("REX_CLIENT") {
             Ok(c) if !c.is_empty() => c,
             _ => self.app_client().ok_or_else(|| anyhow!("no connected Rex app"))?,
         };
-        self.run(&["-C", &client, "do", "session.select", &format!("session_id={session}")]).map(drop)
+        let mut args = vec!["-C", &client, "do"];
+        args.extend(action_and_args);
+        self.run(&args).map(drop)
     }
 
     /// The live app client; stale ones linger after an app restart and make `rex do` ambiguous.

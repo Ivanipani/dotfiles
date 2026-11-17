@@ -121,7 +121,7 @@ rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.fi
 
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   ctrl+a w workspaces   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   ctrl+a w workspaces (shared session)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
@@ -288,14 +288,67 @@ for key, action in pairs({
   rex.bind(key, action)
 end
 
--- Workspace sets (rex-workspace): ctrl+a w pulls the manager TUI up as a
--- near-fullscreen float, from anywhere. It closes itself when the TUI exits.
+-- Workspace sets (rex-workspace): one shared "workspaces" session hosts the manager
+-- TUI for the whole app. ctrl+a w jumps there from any session; the same key (or q in
+-- the TUI) returns to where you were. The session is created on first use.
 section = "Command"
-local toggle_workspace = toggle_float("workspace", "exec rex-workspace", { 0.03, 0.04, 0.94, 0.92 })
-rex.bind("command/w", act("workspace", "Workspaces", function(ctx)
+local HUB = "workspaces"
+local TOGGLE = "workspace_toggle"
+local TOGGLE_PLAIN = "workspace_toggle_plain" -- named in src/rex-workspace/src/rex.rs
+local came_from -- session to return to; lost on config reload, then we fall back to "previous"
+
+local function session_list()
+  local result, err = rex.call("session.list", {})
+  if err ~= nil then error("session.list: " .. tostring(err), 0) end
+  return result.sessions
+end
+
+-- The hub session id, creating it on first use. Its pane restarts the TUI if it dies.
+local function hub_session()
+  for _, s in ipairs(session_list()) do
+    if s.label == HUB then return s.session_id end
+  end
+  local created, err = rex.call("session.create", {
+    label = HUB,
+    initial_windows = { {
+      window_label = "workspaces",
+      layout = { block = {
+        flavor = TERMINAL .. ".shell",
+        label = "rex-workspace",
+        options = { cwd = os.getenv("HOME"), command = { "zsh", "-lic", "while true; do rex-workspace; sleep 1; done" } },
+      } },
+    } },
+  })
+  if err ~= nil then error("session.create: " .. tostring(err), 0) end
+  return created.session_id
+end
+
+local function in_hub(ctx)
+  for _, s in ipairs(session_list()) do
+    if s.session_id == ctx.session_id then return s.label == HUB end
+  end
+end
+
+local function toggle_hub(ctx)
+  if in_hub(ctx) then
+    if came_from then
+      rex.client.queue("session.select", { session_id = came_from })
+    else
+      rex.client.queue("session.previous")
+    end
+  else
+    came_from = ctx.session_id
+    rex.client.queue("session.select", { session_id = hub_session() })
+  end
+end
+
+-- From the key: leave command mode first. From the TUI (no mode active, where
+-- exit_all would fail) the plain action is used.
+rex.bind("command/w", act(TOGGLE, "Workspaces", function(ctx)
   rex.client.queue("client.mode.exit_all")
-  toggle_workspace(ctx)
+  toggle_hub(ctx)
 end))
+rex.action{ name = TOGGLE_PLAIN, title = "Workspaces (no mode exit)", category = section, run = toggle_hub }
 section = "Float"
 
 -- float mode

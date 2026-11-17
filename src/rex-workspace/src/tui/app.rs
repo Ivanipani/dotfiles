@@ -9,7 +9,7 @@ use crate::jj;
 use crate::manifest::{session_label, validate_name, Env, Project};
 use crate::ops;
 use crate::repos;
-use crate::rex::Rex;
+use crate::rex::{Rex, HUB_LABEL, TOGGLE_ACTION};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::TableState;
 use std::path::Path;
@@ -150,6 +150,8 @@ pub struct App {
     /// Lines to print once the terminal is restored.
     pub notes: Vec<String>,
     pub page: usize,
+    /// Running in the shared `workspaces` session: quitting goes back instead of exiting.
+    pub hub: bool,
     details: Option<Receiver<Detail>>,
 }
 
@@ -171,8 +173,10 @@ impl App {
             quit: false,
             notes: vec![],
             page: 10,
+            hub: false,
             details: None,
         };
+        app.hub = app.rex.current_label().as_deref() == Some(HUB_LABEL);
         app.reload(None);
         app
     }
@@ -183,6 +187,7 @@ impl App {
     pub fn reload(&mut self, select: Option<String>) {
         let keep = select.or_else(|| self.current().map(|s| s.name.clone()));
         let sessions = self.rex.sessions();
+        let previous = std::mem::take(&mut self.sets);
         self.sets = self
             .env
             .sets()
@@ -194,12 +199,31 @@ impl App {
                 projects: m
                     .projects
                     .into_iter()
-                    .map(|p| ProjectRow { name: p.name, source: p.source, status: None, loaded: false })
+                    .map(|p| {
+                        // Keep what is already known so a reload does not blank the table.
+                        let old = previous.iter().find(|s| s.name == m.name).and_then(|s| s.projects.iter().find(|o| o.name == p.name));
+                        ProjectRow {
+                            status: old.and_then(|o| o.status.clone()),
+                            loaded: old.is_some_and(|o| o.loaded),
+                            name: p.name,
+                            source: p.source,
+                        }
+                    })
                     .collect(),
                 name: m.name,
             })
             .collect();
+        for set in &mut self.sets {
+            set.tabs = previous.iter().find(|p| p.name == set.name).and_then(|p| p.tabs);
+        }
+        let (focus, project) = (self.focus, self.project_table.selected());
         self.refilter(keep.as_deref());
+        // A periodic reload must not yank the cursor out of the projects table.
+        let same_set = self.current().map(|s| &s.name) == keep.as_ref();
+        if same_set && project.is_some_and(|i| self.current().is_some_and(|s| i < s.projects.len())) {
+            self.project_table.select(project);
+            self.focus = focus;
+        }
         self.spawn_details();
     }
 
@@ -313,6 +337,15 @@ impl App {
     }
 
     // --- actions ------------------------------------------------------------
+
+    /// Quit, or from the shared hub session go back to where the user came from.
+    fn leave(&mut self) {
+        if !self.hub {
+            self.quit = true;
+        } else if let Err(e) = self.rex.perform(&[TOGGLE_ACTION]) {
+            self.fail(format!("could not leave the workspaces session: {e:#}"));
+        }
+    }
 
     fn fail(&mut self, text: impl Into<String>) {
         self.status = Some(Status { text: text.into(), error: true });
@@ -429,7 +462,7 @@ impl App {
             KeyCode::Up => self.move_by(-1),
             KeyCode::Char('n') if ctrl => self.move_by(1),
             KeyCode::Char('p') if ctrl => self.move_by(-1),
-            KeyCode::Char('c') if ctrl => self.quit = true,
+            KeyCode::Char('c') if ctrl => self.leave(),
             _ => {
                 if self.query.edit(key) {
                     self.refilter(None);
@@ -446,9 +479,9 @@ impl App {
         }
         self.status = None;
         match key.code {
-            KeyCode::Char('c') if ctrl => self.quit = true,
-            KeyCode::Char('q') => self.quit = true,
-            KeyCode::Esc if self.query.text.is_empty() => self.quit = true,
+            KeyCode::Char('c') if ctrl => self.leave(),
+            KeyCode::Char('q') => self.leave(),
+            KeyCode::Esc if self.query.text.is_empty() => self.leave(),
             KeyCode::Esc => {
                 self.query = Query::default();
                 self.refilter(None);
@@ -542,7 +575,8 @@ impl App {
             Job::Remove { set, names } => ops::remove(&self.env, &self.rex, set, names),
             Job::Delete(set) => ops::delete(&self.env, &self.rex, set),
         };
-        let leaves = matches!(job, Job::Open(_) | Job::Create { .. });
+        // The hub is shared and long-lived: it stays up after switching away.
+        let leaves = !self.hub && matches!(job, Job::Open(_) | Job::Create { .. });
         let select = match &job {
             Job::Create { set, .. } | Job::Add { set, .. } | Job::Remove { set, .. } => Some(set.clone()),
             _ => None,
@@ -677,6 +711,35 @@ mod tests {
         let mut app = app(tmp.path(), &[("abe", &[])]);
         press(&mut app, 'q');
         assert!(app.quit);
+    }
+
+    #[test]
+    fn q_in_the_hub_goes_back_instead_of_quitting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &[])]);
+        app.hub = true;
+        press(&mut app, 'q');
+        // No Rex server here, so going back fails visibly, but the TUI stays up.
+        assert!(!app.quit && app.status.as_ref().is_some_and(|s| s.error));
+    }
+
+    #[test]
+    fn reload_keeps_the_projects_cursor_where_it_was() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one", "two"])]);
+        app.key(key(KeyCode::Tab));
+        press(&mut app, 'j');
+        app.reload(None);
+        assert_eq!((app.focus, app.project_table.selected()), (Focus::Projects, Some(1)));
+    }
+
+    #[test]
+    fn reload_keeps_already_loaded_project_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"])]);
+        app.sets[0].projects[0].loaded = true;
+        app.reload(None);
+        assert!(app.sets[0].projects[0].loaded);
     }
 
     #[test]
