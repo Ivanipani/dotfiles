@@ -78,15 +78,11 @@ for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scro
   rex.bind(m .. "/" .. key, enter_mode.command)
 end
 
--- Tab moves work outside modes only; in command mode they would clutter the menu.
+-- alt+ keys work outside modes only; the command menu lists just modes (and go-to).
 rex.bind("alt+i", "client.tab.move", { direction = "backward" })
 rex.bind("alt+o", "client.tab.move", { direction = "forward" })
-
--- shared_among normal/locked
-for _, prefix in ipairs({ "", "command/" }) do
-  rex.bind(prefix .. "alt+n", "pane.split", { direction = "auto" })
-  rex.bind(prefix .. "alt+f", "pane.go_to")
-end
+rex.bind("alt+n", "pane.split", { direction = "auto" })
+rex.bind("alt+f", "pane.go_to")
 rex.bind("command/f", done("go_to", "Go to", "pane.go_to"))
 
 -- pane
@@ -329,7 +325,6 @@ for key, action in pairs({
   ["alt+w"] = "float_toggle_all", ["alt+[Comma]"] = "float_prev", ["alt+[Period]"] = "float_next",
 }) do
   rex.bind(key, action)
-  rex.bind("command/" .. key, action)
 end
 section = "Workspace"
 rex.bind("workspace/j", done("jjui_toggle", "jjui", "workspace_jjui"))
