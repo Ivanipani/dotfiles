@@ -59,23 +59,19 @@ for key, action in pairs({
 }) do rex.bind(key, action) end
 -- nvim owns ctrl+h/j/k/l (window moves, and it hands focus back to Rex at its
 -- edge), so they are written through to it; any other program gets pane focus.
-local function foreground_is_nvim()
-  local ids = { block_id = rex.block_id, session_id = rex.session_id }
+local function foreground_is_nvim(ids)
   local p = rex.call("com.superlogical.terminal.process", ids)
   return p and p.foreground and p.foreground.name == "nvim"
 end
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
-  local byte = ({ h = "\8", j = "\10", k = "\11", l = "\12" })[key]
-  local name = act("focus_" .. dir, "Focus " .. dir, function(ctx, ev)
-    local t = {}
-    for k, v in pairs(ctx or {}) do t[#t + 1] = tostring(k) .. "=" .. tostring(v) end
-    local ok, res = pcall(foreground_is_nvim)
-    local line = "DBG " .. dir .. " ctx{" .. table.concat(t, ",") .. "} bid=" .. tostring(rex.block_id)
-      .. " sid=" .. tostring(rex.session_id) .. " ok=" .. tostring(ok) .. " res=" .. tostring(res)
-    rex.exec{ argv = { "sh", "-c", "echo '" .. line .. "' >> /tmp/rexnav.log" } }
-    if foreground_is_nvim() then
-      rex.call("com.superlogical.terminal.write",
-        { block_id = rex.block_id, session_id = rex.session_id, data = byte })
+  local byte = ({ h = "\\u0008", j = "\\u000a", k = "\\u000b", l = "\\u000c" })[key]
+  local name = act("focus_" .. dir, "Focus " .. dir, function(ctx)
+    local ids = { block_id = ctx.block_id, session_id = ctx.session_id }
+    if foreground_is_nvim(ids) then
+      -- rex.call cannot pass `data` to write, so go through the CLI.
+      rex.exec({ "sh", "-c",
+        'PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH" rex block call -s "$1" -b "$2" write "$3"',
+        "sh", ctx.session_id, ctx.block_id, '{"data":"' .. byte .. '"}' })
     else
       rex.client.queue("pane.focus", { direction = dir })
     end
