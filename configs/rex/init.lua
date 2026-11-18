@@ -66,7 +66,13 @@ local function foreground_is_nvim()
 end
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
   local byte = ({ h = "\8", j = "\10", k = "\11", l = "\12" })[key]
-  local name = act("focus_" .. dir, "Focus " .. dir, function()
+  local name = act("focus_" .. dir, "Focus " .. dir, function(ctx, ev)
+    local t = {}
+    for k, v in pairs(ctx or {}) do t[#t + 1] = tostring(k) .. "=" .. tostring(v) end
+    local ok, res = pcall(foreground_is_nvim)
+    local line = "DBG " .. dir .. " ctx{" .. table.concat(t, ",") .. "} bid=" .. tostring(rex.block_id)
+      .. " sid=" .. tostring(rex.session_id) .. " ok=" .. tostring(ok) .. " res=" .. tostring(res)
+    rex.exec{ argv = { "sh", "-c", "echo '" .. line .. "' >> /tmp/rexnav.log" } }
     if foreground_is_nvim() then
       rex.call("com.superlogical.terminal.write",
         { block_id = rex.block_id, session_id = rex.session_id, data = byte })
