@@ -46,7 +46,6 @@ else
 		require("plugins.venv"),
 		require("plugins.flash"),
 		require("plugins.indent"),
-		require("plugins.zellij-nav"),
 		require("plugins.trouble"),
 		require("plugins.claude"),
 	})

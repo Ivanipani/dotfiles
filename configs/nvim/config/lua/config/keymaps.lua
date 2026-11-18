@@ -9,8 +9,20 @@ vim.keymap.set("n", "<right>", "<cmd>echo 'Use l to move!!'<CR>")
 vim.keymap.set("n", "<up>", "<cmd>echo 'Use k to move!!'<CR>")
 vim.keymap.set("n", "<down>", "<cmd>echo 'Use j to move!!'<CR>")
 
--- Window navigation is <C-h/j/k/l>, defined in plugins/zellij-nav.lua so it
--- crosses between neovim splits and zellij panes with the same keys.
+-- Window navigation is <C-h/j/k/l>. Rex forwards these keys to nvim (see
+-- rex/init.lua); at the edge of the nvim windows, hand focus to the Rex pane.
+local function win_nav(key, direction)
+    vim.keymap.set({"n", "t"}, "<C-" .. key .. ">", function()
+        local before = vim.api.nvim_get_current_win()
+        vim.cmd("wincmd " .. key)
+        if vim.api.nvim_get_current_win() == before and vim.env.REX_BLOCK then
+            vim.system({"rex", "do", "pane.focus", "direction=" .. direction})
+        end
+    end, {desc = "Window/pane " .. direction})
+end
+for key, direction in pairs({h = "left", j = "down", k = "up", l = "right"}) do
+    win_nav(key, direction)
+end
 
 -- i goes back, o goes forward -- same direction sense as <leader>gi/<leader>go.
 -- NOTE: terminals send <C-i> and <Tab> as the same byte, so this moves <Tab> too.

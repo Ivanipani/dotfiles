@@ -57,8 +57,24 @@ for key, action in pairs({
   ["alt+k"] = "client.tab.previous", ["alt+j"] = "client.tab.next",
   ["alt+h"] = "session.previous",    ["alt+l"] = "session.next",
 }) do rex.bind(key, action) end
+-- nvim owns ctrl+h/j/k/l (window moves, and it hands focus back to Rex at its
+-- edge), so they are written through to it; any other program gets pane focus.
+local function foreground_is_nvim()
+  local ids = { block_id = rex.block_id, session_id = rex.session_id }
+  local p = rex.call("com.superlogical.terminal.process", ids)
+  return p and p.foreground and p.foreground.name == "nvim"
+end
 for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
-  rex.bind("ctrl+" .. key, "pane.focus", { direction = dir })
+  local byte = ({ h = "\8", j = "\10", k = "\11", l = "\12" })[key]
+  local name = act("focus_" .. dir, "Focus " .. dir, function()
+    if foreground_is_nvim() then
+      rex.call("com.superlogical.terminal.write",
+        { block_id = rex.block_id, session_id = rex.session_id, data = byte })
+    else
+      rex.client.queue("pane.focus", { direction = dir })
+    end
+  end)
+  rex.bind("ctrl+" .. key, name)
 end
 
 -- Mode switches from command mode
