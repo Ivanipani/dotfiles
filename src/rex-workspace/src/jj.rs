@@ -16,8 +16,8 @@ fn jj_ok(dir: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-pub fn workspace_add(source: &str, set: &str, dir: &Path) -> Result<()> {
-    jj_ok(Path::new(source), &["workspace", "add", "--name", set, &dir.to_string_lossy()])?;
+pub fn workspace_add(source: &str, name: &str, dir: &Path) -> Result<()> {
+    jj_ok(Path::new(source), &["workspace", "add", "--name", name, &dir.to_string_lossy()])?;
     jj_ok(dir, &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"])?;
     Ok(())
 }

@@ -41,7 +41,7 @@ pub fn name_uniquely(sources: Vec<PathBuf>) -> Vec<Project> {
             let b = base(source);
             let dup = names.iter().filter(|n| **n == b).count() > 1;
             let name = if dup { format!("{}-{b}", source.parent().map(base).unwrap_or_default()) } else { b };
-            Project { name, source: Some(source.to_string_lossy().into_owned()) }
+            Project { name, source: Some(source.to_string_lossy().into_owned()), feature: None }
         })
         .collect()
 }

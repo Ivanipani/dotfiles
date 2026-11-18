@@ -102,6 +102,8 @@ impl Job {
 
 pub enum Input {
     NewName,
+    /// Naming an extra version of `repos[base]`; the picker it came from is restored afterwards.
+    Version { picker: Picker, purpose: Pick, repos: Vec<Project>, base: usize },
 }
 
 pub enum Confirm {
@@ -373,10 +375,14 @@ impl App {
         if let Err(e) = validate_name(&name) {
             return self.fail(e.to_string());
         }
-        if self.env.set_dir(&name).exists() {
+        if self.env.exists(&name) {
             return self.fail(format!("{name} already exists"));
         }
         self.pick_repos(Pick::NewRepos(name));
+    }
+
+    fn members(&self, set: &str) -> Vec<String> {
+        self.env.load(set).map(|m| m.projects).unwrap_or_default().into_iter().map(|p| p.name).collect()
     }
 
     fn begin_add(&mut self) {
@@ -390,12 +396,20 @@ impl App {
             Pick::NewRepos(s) | Pick::AddRepos(s) => s.clone(),
             Pick::RemoveProjects(_) => return,
         };
-        let have: Vec<_> = self.env.load(&set).map(|m| m.projects).unwrap_or_default().into_iter().map(|p| p.name).collect();
-        let repos: Vec<_> = repos::scan(&self.env.roots).into_iter().filter(|p| !have.contains(&p.name)).collect();
-        if repos.is_empty() {
+        let have = self.members(&set);
+        let repos = repos::scan(&self.env.roots);
+        if repos.iter().all(|p| have.contains(&p.name)) {
             return self.fail("no repositories left to add");
         }
-        let choices = repos.iter().map(|p| Choice::new(&p.name, &tilde(p.source.as_deref().unwrap_or("")))).collect();
+        // Repositories already in the set stay listed so an extra version (Ctrl-F) can be made of them.
+        let choices = repos
+            .iter()
+            .map(|p| {
+                let source = tilde(p.source.as_deref().unwrap_or(""));
+                let detail = if have.contains(&p.name) { format!("in set · {source}") } else { source };
+                Choice::new(&p.name, &detail)
+            })
+            .collect();
         let title = match purpose {
             Pick::NewRepos(_) => format!(" New set {set} — choose repositories "),
             _ => format!(" Add to {set} "),
@@ -522,10 +536,17 @@ impl App {
     fn modal_key(&mut self, modal: Modal, key: KeyEvent) {
         match modal {
             Modal::Help => {}
+            Modal::Input { purpose: Input::Version { picker, purpose, repos, .. }, query, title } if key.code == KeyCode::Esc => {
+                drop((query, title));
+                self.modal = Some(Modal::Pick { picker, purpose, repos });
+            }
             Modal::Input { title, mut query, purpose } => match key.code {
                 KeyCode::Esc => {}
                 KeyCode::Enter => match purpose {
                     Input::NewName => self.begin_create(query.text.trim().to_string()),
+                    Input::Version { picker, purpose, repos, base } => {
+                        self.add_version(picker, purpose, repos, base, query.text.trim())
+                    }
                 },
                 _ => {
                     query.edit(key);
@@ -545,13 +566,39 @@ impl App {
             Modal::Pick { mut picker, purpose, repos } => match picker.key(key) {
                 Outcome::Continue => self.modal = Some(Modal::Pick { picker, purpose, repos }),
                 Outcome::Cancel => {}
+                Outcome::Version(base) => {
+                    let title = format!(" Version of {} — name ", repos[base].name);
+                    let purpose = Input::Version { picker, purpose, repos, base };
+                    self.modal = Some(Modal::Input { title, query: Query::default(), purpose });
+                }
                 Outcome::Accept(indices) => self.accept_pick(purpose, repos, indices),
             },
         }
     }
 
+    /// Adds `<repo>-<feature>` to the picker, marked; back to the picker on a bad or duplicate name.
+    fn add_version(&mut self, mut picker: Picker, purpose: Pick, mut repos: Vec<Project>, base: usize, feature: &str) {
+        let version = repos[base].with_feature(feature);
+        match validate_name(feature) {
+            Err(e) => self.fail(e.to_string()),
+            Ok(()) if repos.iter().any(|r| r.name == version.name) => self.fail(format!("{} already exists", version.name)),
+            Ok(()) => {
+                picker.add_marked(Choice::new(&version.name, &tilde(version.source.as_deref().unwrap_or(""))));
+                repos.push(version);
+            }
+        }
+        self.modal = Some(Modal::Pick { picker, purpose, repos });
+    }
+
     fn accept_pick(&mut self, purpose: Pick, repos: Vec<Project>, indices: Vec<usize>) {
-        let picks: Vec<_> = indices.iter().filter_map(|&i| repos.get(i).cloned()).collect();
+        let have = match &purpose {
+            Pick::NewRepos(set) | Pick::AddRepos(set) => self.members(set),
+            Pick::RemoveProjects(_) => vec![],
+        };
+        let picks: Vec<_> = indices.iter().filter_map(|&i| repos.get(i)).filter(|p| !have.contains(&p.name)).cloned().collect();
+        if picks.is_empty() && !matches!(purpose, Pick::RemoveProjects(_)) {
+            return self.fail("already in the set; Ctrl-F makes another version");
+        }
         self.pending = Some(match purpose {
             Pick::NewRepos(set) => Job::Create { set, picks },
             Pick::AddRepos(set) => Job::Add { set, picks },
@@ -621,7 +668,7 @@ mod tests {
     fn app(dir: &Path, sets: &[(&str, &[&str])]) -> App {
         let env = Env { workspaces_dir: dir.to_path_buf(), roots: vec![] };
         for (name, projects) in sets {
-            let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None }).collect();
+            let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None, feature: None }).collect();
             env.save(&Manifest { name: (*name).into(), projects }).unwrap();
         }
         // No Rex server: sessions come back empty.
@@ -830,6 +877,36 @@ mod tests {
         }
         app.key(key(KeyCode::Enter));
         assert!(app.status.as_ref().is_some_and(|s| s.text.contains("already exists")));
+    }
+
+    #[test]
+    fn new_set_ignores_a_bare_directory_without_a_manifest() {
+        // GIVEN debris from a failed create
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[]);
+        std::fs::create_dir(tmp.path().join("vms")).unwrap();
+        press(&mut app, 'n');
+        for c in "vms".chars() {
+            press(&mut app, c);
+        }
+        // WHEN
+        app.key(key(KeyCode::Enter));
+        // THEN it is not rejected as existing
+        assert!(!app.status.as_ref().is_some_and(|s| s.text.contains("already exists")));
+    }
+
+    #[test]
+    fn add_version_marks_a_new_project_named_after_repo_and_feature() {
+        // GIVEN a picker over one repo
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[]);
+        let repos = vec![Project { name: "api".into(), source: Some("/src/api".into()), feature: None }];
+        let picker = Picker::new("t", vec![Choice::new("api", "")], true);
+        // WHEN
+        app.add_version(picker, Pick::NewRepos("demo".into()), repos, 0, "v2");
+        app.key(key(KeyCode::Enter));
+        // THEN accepting queues only the version
+        assert!(matches!(&app.pending, Some(Job::Create { picks, .. }) if picks.len() == 1 && picks[0].name == "api-v2"));
     }
 
     #[test]

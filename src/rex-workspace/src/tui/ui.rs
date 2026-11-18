@@ -302,7 +302,7 @@ const HELP: &[(&str, &str)] = &[
     ("r", "reload"),
     ("?", "this help"),
     ("q  Esc", "quit"),
-    ("in pickers", "type to filter, Tab marks, Enter accepts"),
+    ("in pickers", "type to filter, Tab marks, Ctrl-F adds a version, Enter accepts"),
 ];
 
 #[cfg(test)]
@@ -315,7 +315,7 @@ mod tests {
     fn app_with(dir: &std::path::Path, sets: &[(&str, &[&str])]) -> App {
         let env = Env { workspaces_dir: dir.to_path_buf(), roots: vec![] };
         for (name, projects) in sets {
-            let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None }).collect();
+            let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None, feature: None }).collect();
             env.save(&Manifest { name: (*name).into(), projects }).unwrap();
         }
         std::env::set_var("REX_BIN", "/nonexistent");

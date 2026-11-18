@@ -9,6 +9,31 @@ pub struct Project {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Set on an extra workspace of a repository that is already in the set under its own name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature: Option<String>,
+}
+
+impl Project {
+    /// The jj workspace name: the set's, plus the feature for an extra workspace.
+    pub fn workspace_name(&self, set: &str) -> String {
+        match &self.feature {
+            Some(feature) => format!("{set}-{feature}"),
+            None => set.to_string(),
+        }
+    }
+
+    /// An extra workspace of this repository, named `<repo>-<feature>`.
+    pub fn with_feature(&self, feature: &str) -> Project {
+        Project { name: format!("{}-{feature}", self.base_name()), source: self.source.clone(), feature: Some(feature.into()) }
+    }
+
+    fn base_name(&self) -> &str {
+        match &self.feature {
+            Some(f) => self.name.strip_suffix(&format!("-{f}")).unwrap_or(&self.name),
+            None => &self.name,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +65,11 @@ impl Env {
 
     pub fn set_dir(&self, set: &str) -> PathBuf {
         self.workspaces_dir.join(set)
+    }
+
+    /// A set exists once it has a manifest; a bare directory is debris from a failed create.
+    pub fn exists(&self, set: &str) -> bool {
+        self.set_dir(set).join("workspace.yaml").exists()
     }
 
     pub fn load(&self, set: &str) -> Result<Manifest> {
@@ -145,7 +175,7 @@ mod tests {
     fn manifest(names: &[&str]) -> Manifest {
         Manifest {
             name: "demo".into(),
-            projects: names.iter().map(|n| Project { name: (*n).into(), source: Some(format!("/src/{n}")) }).collect(),
+            projects: names.iter().map(|n| Project { name: (*n).into(), source: Some(format!("/src/{n}")), feature: None }).collect(),
         }
     }
 
@@ -205,6 +235,39 @@ mod tests {
         let names: Vec<_> = env.sets().into_iter().map(|m| m.name).collect();
         // THEN
         assert_eq!(names, ["abe", "zed"]);
+    }
+
+    #[test]
+    fn exists_when_the_directory_has_no_manifest_is_false() {
+        // GIVEN a bare directory left by a failed create
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("vms")).unwrap();
+        // WHEN / THEN
+        assert!(!env(tmp.path()).exists("vms"));
+    }
+
+    #[test]
+    fn with_feature_names_the_project_after_the_repo_and_feature() {
+        let base = Project { name: "api".into(), source: Some("/src/api".into()), feature: None };
+        assert_eq!(base.with_feature("v2").name, "api-v2");
+    }
+
+    #[test]
+    fn with_feature_on_a_feature_project_replaces_the_feature() {
+        let base = Project { name: "api".into(), source: None, feature: None };
+        assert_eq!(base.with_feature("v2").with_feature("v3").name, "api-v3");
+    }
+
+    #[test]
+    fn workspace_name_for_a_feature_is_suffixed_with_it() {
+        let p = Project { name: "api-v2".into(), source: None, feature: Some("v2".into()) };
+        assert_eq!(p.workspace_name("demo"), "demo-v2");
+    }
+
+    #[test]
+    fn workspace_name_without_a_feature_is_the_set() {
+        let p = Project { name: "api".into(), source: None, feature: None };
+        assert_eq!(p.workspace_name("demo"), "demo");
     }
 
     #[test]

@@ -46,6 +46,7 @@ Manager keys (none collide with Rex's ctrl+a, ctrl+h/j/k/l or alt+ chords):
   j/k ↑/↓  move          Enter/o  open        n  new set       a  add repos
   x  remove projects     D  delete set       /  fuzzy filter  Tab  focus projects
   r  reload              ?  help             q/Esc  quit
+In pickers: Tab marks, Ctrl-F names an extra workspace (version) of the focused repo.
 
 Environment:
   REX_WORKSPACES_DIR     where sets live (default ~/.local/share/workspaces)
@@ -57,6 +58,7 @@ Examples:
   rex-workspace ls                    Table of sets, projects and sessions
   rex-workspace new feat-x api web    Create a set from two repos and open it
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
+  rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
   rex-workspace delete feat-x -y      Delete without asking"
 )]
 struct Cli {
@@ -89,14 +91,16 @@ enum Command {
     New {
         /// Name of the new set
         set: String,
-        /// Repositories to include, by name (default: pick in the manager)
+        /// Repositories to include, by name; `repo:feature` adds an extra jj workspace of `repo`
+        /// (default: pick in the manager)
         repos: Vec<String>,
     },
     /// Add repositories to a set.
     Add {
         /// Set to change (default: this session's set)
         set: Option<String>,
-        /// Repositories to add, by name (default: pick in the manager)
+        /// Repositories to add, by name; `repo:feature` adds an extra jj workspace of `repo`
+        /// (default: pick in the manager)
         repos: Vec<String>,
     },
     /// Remove projects from a set.
@@ -164,7 +168,7 @@ fn run(command: Option<Command>) -> Result<()> {
         Command::Open { set: None } => manager(env, rex, Launch::default()),
         Command::Open { set: Some(set) } => Ok(print_notes(ops::open(&env, &rex, &set)?)),
         Command::New { set, repos } => {
-            if env.set_dir(&set).exists() {
+            if env.exists(&set) {
                 bail!("{set} already exists");
             }
             manifest::validate_name(&set)?;
@@ -192,7 +196,7 @@ fn run(command: Option<Command>) -> Result<()> {
             let Some(set) = set.or_else(|| ops::current_set(&rex)) else {
                 return manager(env, rex, Launch { action: Some(Action::Delete), ..Launch::default() });
             };
-            if !env.set_dir(&set).exists() {
+            if !env.exists(&set) {
                 bail!("no set named {set}");
             }
             if !yes && !confirm(&format!("Delete workspace set {set}? [y/N] ")) {

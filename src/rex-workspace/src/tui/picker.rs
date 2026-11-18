@@ -35,6 +35,8 @@ pub enum Outcome {
     Cancel,
     /// Indices into the original choices, ascending.
     Accept(Vec<usize>),
+    /// Ctrl-F on a choice: the caller names an extra version of it, then calls `add_marked`.
+    Version(usize),
 }
 
 pub struct Picker {
@@ -78,9 +80,24 @@ impl Picker {
         self.selected = self.selected.saturating_add_signed(amount).min(self.matches.len().saturating_sub(1));
     }
 
+    /// Appends a choice, marked and ready to accept; the filter is cleared so it is visible.
+    pub fn add_marked(&mut self, choice: Choice) {
+        self.choices.push(choice);
+        self.finder = FuzzyFinder::new(self.choices.iter().map(|c| c.label.as_str()));
+        self.marked.insert(self.choices.len() - 1);
+        self.query = Query::default();
+        self.refresh();
+        self.selected = self.choices.len() - 1;
+    }
+
     pub fn key(&mut self, key: KeyEvent) -> Outcome {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
+            KeyCode::Char('f') if ctrl && self.multi => {
+                if let Some(m) = self.matches.get(self.selected) {
+                    return Outcome::Version(m.index);
+                }
+            }
             KeyCode::Esc => return Outcome::Cancel,
             KeyCode::Char('c') if ctrl => return Outcome::Cancel,
             KeyCode::Enter => {
@@ -151,7 +168,7 @@ impl Picker {
         }
         let detail_text = self.matches.get(self.selected).map(|m| self.choices[m.index].detail.as_str()).unwrap_or("");
         frame.render_widget(Paragraph::new(format!("  {detail_text}")).style(Style::default().fg(MUTED)), detail);
-        let keys = if self.multi { " ↑↓ move  Tab mark  Enter accept  Esc cancel" } else { " ↑↓ move  Enter accept  Esc cancel" };
+        let keys = if self.multi { " ↑↓ move  Tab mark  ^f version  Enter accept  Esc cancel" } else { " ↑↓ move  Enter accept  Esc cancel" };
         frame.render_widget(Paragraph::new(keys).style(Style::default().fg(MUTED)), help);
         self.page = usize::from(results.height).max(1);
     }
@@ -226,6 +243,34 @@ mod tests {
         p.key(key(KeyCode::Char('z')));
         // THEN both marks are still accepted, in input order
         assert_eq!(p.key(key(KeyCode::Enter)), Outcome::Accept(vec![0, 2]));
+    }
+
+    #[test]
+    fn ctrl_f_asks_for_a_version_of_the_focused_choice() {
+        // GIVEN the second choice focused
+        let mut p = picker(true);
+        p.key(key(KeyCode::Down));
+        // WHEN
+        let outcome = p.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        // THEN
+        assert_eq!(outcome, Outcome::Version(1));
+    }
+
+    #[test]
+    fn ctrl_f_in_single_mode_does_nothing() {
+        let mut p = picker(false);
+        assert_eq!(p.key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL)), Outcome::Continue);
+    }
+
+    #[test]
+    fn add_marked_makes_the_new_choice_accepted_with_the_marked_ones() {
+        // GIVEN the first choice marked
+        let mut p = picker(true);
+        p.key(key(KeyCode::Tab));
+        // WHEN a version is added
+        p.add_marked(Choice::new("alpha-v2", ""));
+        // THEN accepting returns both
+        assert_eq!(p.key(key(KeyCode::Enter)), Outcome::Accept(vec![0, 3]));
     }
 
     #[test]
