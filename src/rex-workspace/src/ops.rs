@@ -41,6 +41,8 @@ pub fn add(env: &Env, rex: &Rex, set: &str, picks: &[Project]) -> Result<Vec<Str
         if manifest.projects.iter().any(|q| q.name == p.name) {
             bail!("{} is already in {set}", p.name);
         }
+        // jj does not create missing parents.
+        std::fs::create_dir_all(env.set_dir(set))?;
         if let Err(e) = jj::workspace_add(source, &p.workspace_name(set), &dir) {
             // Do not leave a bare directory that would block creating the set again.
             if !env.exists(set) {
@@ -188,6 +190,21 @@ mod tests {
         env.save(&crate::manifest::Manifest { name: "demo".into(), projects: api }).unwrap();
         // WHEN / THEN
         assert_eq!(resolved(&env, &["api:v2"]), ["api-v2"]);
+    }
+
+    #[test]
+    fn add_creates_the_workspace_in_a_new_set_directory() {
+        // GIVEN a real jj repo and a set that does not exist yet
+        let (tmp, env) = env_with_repos(&[]);
+        let src = tmp.path().join("src/api");
+        std::fs::create_dir_all(&src).unwrap();
+        let init = std::process::Command::new("jj").args(["git", "init"]).current_dir(&src).output().unwrap();
+        assert!(init.status.success());
+        let pick = Project { name: "api".into(), source: Some(src.to_string_lossy().into()), feature: None };
+        // WHEN
+        add(&env, &Rex::locate(), "demo", &[pick]).unwrap();
+        // THEN
+        assert!(env.set_dir("demo").join("api/.jj").is_dir());
     }
 
     #[test]
