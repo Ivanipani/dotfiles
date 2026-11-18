@@ -31,8 +31,8 @@ const STYLES: Styles = Styles::styled()
 ///
 /// A set lives at ~/.local/share/workspaces/<set>/ with a workspace.yaml
 /// manifest and one jj workspace per project. Opening it creates the Rex
-/// session `ws-<set>`: a tab at the set root, then per project an nvim | agent
-/// split with jjui in a floating layer. The format is shared with
+/// session `ws-<set>`: a tab at the set root, then per project a tab with a
+/// single nvim pane. The format is shared with
 /// zellij-workspace, so a set opens from either.
 ///
 /// With no command, opens the full-screen manager.

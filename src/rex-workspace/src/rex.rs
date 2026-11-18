@@ -11,7 +11,6 @@ pub const HUB_LABEL: &str = "workspaces";
 /// The init.lua action that jumps to the hub, or back from it.
 pub const TOGGLE_ACTION: &str = "workspace_toggle_plain";
 const SHELL_FLAVOR: &str = "com.superlogical.terminal.shell";
-const JJUI_BOUNDS: [f64; 4] = [0.05, 0.05, 0.9, 0.9];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
@@ -102,19 +101,9 @@ impl Rex {
         })
     }
 
-    /// Tiled nvim | agent split, plus jjui in a minimized floating layer.
+    /// A tab holding a single nvim pane; jjui and agents live in floats opened on demand.
     pub fn add_window(&self, session: &str, name: &str, dir: &str) -> Result<()> {
-        let win = self.call(
-            session,
-            "session.new_window",
-            json!({"window_label": name, "layout": project_layout(dir), "focus": false}),
-        )?;
-        let layer = self.call(
-            session,
-            "session.new_layer",
-            json!({"window_id": win["window_id"], "bounds": JJUI_BOUNDS, "layout": block("jjui", dir, Some(in_shell("while jjui; do :; done")))}),
-        )?;
-        self.call(session, "session.set_layer_state", json!({"layer_id": layer["layer_id"], "state": "minimized"}))?;
+        self.call(session, "session.new_window", json!({"window_label": name, "layout": project_layout(dir), "focus": false}))?;
         Ok(())
     }
 
@@ -166,12 +155,7 @@ fn block(label: &str, cwd: &str, command: Option<Vec<String>>) -> Value {
 }
 
 fn project_layout(dir: &str) -> Value {
-    json!({"split": {
-        "direction": "horizontal",
-        "ratio": 0.6,
-        "before": block("nvim", dir, Some(in_shell("exec nvim ."))),
-        "after": block("agent", dir, Some(in_shell("exec claude"))),
-    }})
+    block("nvim", dir, Some(in_shell("exec nvim .")))
 }
 
 #[cfg(test)]
@@ -192,12 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn project_layout_splits_nvim_before_the_agent() {
+    fn project_layout_is_a_single_nvim_pane() {
         // GIVEN / WHEN
         let l = project_layout("/d");
         // THEN
-        assert_eq!(l["split"]["before"]["block"]["label"], "nvim");
-        assert_eq!(l["split"]["after"]["block"]["label"], "agent");
+        assert_eq!(l["block"]["label"], "nvim");
+        assert!(l.get("split").is_none());
     }
 
     #[test]
