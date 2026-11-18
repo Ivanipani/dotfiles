@@ -38,17 +38,13 @@
       {
         "matcher": "permission_prompt|idle_prompt|agent_needs_input|agent_completed|elicitation_dialog|elicitation_url_dialog|quota_auto_resume_fired|quota_auto_resume_stale",
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"$HOME/.{{ client }}/hooks/notify.sh\""
-          },
           {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}
         ]
       }
     ],
 {% else %}
-    "PermissionRequest": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
-    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
+    "PermissionRequest": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
 {% endif %}
     "Stop": [
       {
@@ -58,12 +54,6 @@
             "command": "\"$HOME/.{{ client }}/hooks/dot-apply.sh\""
           },
           {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"},
-{% if client == "codex" %}
-          {
-            "type": "command",
-            "command": "\"$HOME/.codex/hooks/notify.sh\" Codex"
-          },
-{% endif %}
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"

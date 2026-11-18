@@ -80,37 +80,6 @@ def test_stop_does_not_loop(repo):
     assert result.stdout == ""
 
 
-@pytest.mark.parametrize(
-    "event,message",
-    [
-        ("PermissionRequest", "Needs permission to continue"),
-        ("SubagentStop", "An agent finished"),
-        ("Stop", "Finished responding"),
-    ],
-)
-def test_codex_notifications(repo, tmp_path, event, message):
-    log = tmp_path / "calls"
-    for name in ("osascript",):
-        executable = tmp_path / name
-        executable.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >> "$HOOK_TEST_LOG"\n')
-        executable.chmod(0o755)
-    subprocess.run(
-        [str(repo / "configs/agents/hooks/notify.sh"), "Codex"],
-        input=json.dumps({"hook_event_name": event, "cwd": str(tmp_path)}),
-        text=True,
-        capture_output=True,
-        check=True,
-        env={
-            **os.environ,
-            "PATH": f"{tmp_path}:{os.environ['PATH']}",
-            "HOOK_TEST_LOG": str(log),
-        },
-    )
-    calls = log.read_text()
-    assert message in calls
-    assert "Codex" in calls
-
-
 def _run_reek_check(repo, tmp_path, lint_exit, config="reek.toml"):
     for name, body in {
         "jj": f'case "$1" in root) echo {tmp_path};; diff) echo a.py;; esac',
