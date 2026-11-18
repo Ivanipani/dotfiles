@@ -10,12 +10,15 @@ vim.keymap.set("n", "<up>", "<cmd>echo 'Use k to move!!'<CR>")
 vim.keymap.set("n", "<down>", "<cmd>echo 'Use j to move!!'<CR>")
 
 -- Window navigation is <C-h/j/k/l>. Rex forwards these keys to nvim (see
--- rex/init.lua); at the edge of the nvim windows, hand focus to the Rex pane.
+-- rex/init.lua); at the edge of the nvim windows, hand focus to the zellij or Rex pane.
 local function win_nav(key, direction)
     vim.keymap.set({"n", "t"}, "<C-" .. key .. ">", function()
         local before = vim.api.nvim_get_current_win()
         vim.cmd("wincmd " .. key)
-        if vim.api.nvim_get_current_win() == before and vim.env.REX_BLOCK then
+        if vim.api.nvim_get_current_win() ~= before then return end
+        if vim.env.ZELLIJ then
+            vim.system({"zellij", "action", "move-focus", direction})
+        elseif vim.env.REX_BLOCK then
             vim.system({"rex", "do", "pane.focus", "direction=" .. direction})
         end
     end, {desc = "Window/pane " .. direction})
