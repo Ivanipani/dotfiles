@@ -17,6 +17,8 @@ fn jj_ok(dir: &Path, args: &[&str]) -> Result<String> {
 }
 
 pub fn workspace_add(source: &str, name: &str, dir: &Path) -> Result<()> {
+    // Other workspaces rewrite the source's commit; `workspace add` refuses a stale source.
+    let _ = jj(Path::new(source), &["workspace", "update-stale"]);
     jj_ok(Path::new(source), &["workspace", "add", "--name", name, &dir.to_string_lossy()])?;
     jj_ok(dir, &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"])?;
     Ok(())
