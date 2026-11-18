@@ -80,8 +80,9 @@ impl Picker {
         self.selected = self.selected.saturating_add_signed(amount).min(self.matches.len().saturating_sub(1));
     }
 
-    /// Appends a choice, marked and ready to accept; the filter is cleared so it is visible.
-    pub fn add_marked(&mut self, choice: Choice) {
+    /// Appends a version of `base`, marked in its place (`base` is unmarked); the filter is cleared so it is visible.
+    pub fn add_marked(&mut self, base: usize, choice: Choice) {
+        self.marked.remove(&base);
         self.choices.push(choice);
         self.finder = FuzzyFinder::new(self.choices.iter().map(|c| c.label.as_str()));
         self.marked.insert(self.choices.len() - 1);
@@ -268,9 +269,20 @@ mod tests {
         let mut p = picker(true);
         p.key(key(KeyCode::Tab));
         // WHEN a version is added
-        p.add_marked(Choice::new("alpha-v2", ""));
+        p.add_marked(1, Choice::new("beta-v2", ""));
         // THEN accepting returns both
         assert_eq!(p.key(key(KeyCode::Enter)), Outcome::Accept(vec![0, 3]));
+    }
+
+    #[test]
+    fn add_marked_unmarks_the_base_it_was_made_from() {
+        // GIVEN the first choice marked
+        let mut p = picker(true);
+        p.key(key(KeyCode::Tab));
+        // WHEN a version of it is added
+        p.add_marked(0, Choice::new("alpha-v2", ""));
+        // THEN only the version is accepted
+        assert_eq!(p.key(key(KeyCode::Enter)), Outcome::Accept(vec![3]));
     }
 
     #[test]

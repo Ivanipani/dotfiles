@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, BorderType, Cell, Clear, Padding, Paragraph, Row, Table, Wrap},
     Frame,
 };
 use std::time::SystemTime;
@@ -265,17 +265,25 @@ fn render_modal(frame: &mut Frame, modal: &mut Modal, area: Rect) {
             frame.render_widget(Paragraph::new(lines).block(modal_block(" Keys — any key closes ")), rect);
         }
         Modal::Input { title, query, .. } => {
-            let rect = centered(area, 50, 3);
+            let rect = centered(area, area.width.saturating_sub(8).min(72), 9);
             frame.render_widget(Clear, rect);
-            let tail = query.tail(usize::from(rect.width.saturating_sub(5))).to_string();
-            frame.render_widget(Paragraph::new(format!("> {tail}")).block(modal_block(title)), rect);
-            frame.set_cursor_position((rect.x + 3 + UnicodeWidthStr::width(tail.as_str()) as u16, rect.y + 1));
+            let block = modal_block(title).padding(Padding::new(2, 2, 1, 1));
+            let inner = block.inner(rect);
+            frame.render_widget(block, rect);
+            let tail = query.tail(usize::from(inner.width.saturating_sub(2))).to_string();
+            let body = vec![Line::raw(format!("> {tail}")), Line::raw(""), Line::from(Span::styled("Enter accept   Esc cancel", dim()))];
+            frame.render_widget(Paragraph::new(body), inner);
+            frame.set_cursor_position((inner.x + 2 + UnicodeWidthStr::width(tail.as_str()) as u16, inner.y));
         }
         Modal::Confirm { message, .. } => {
-            let rect = centered(area, 64, 5);
+            let rect = centered(area, area.width.saturating_sub(8).min(72), 11);
             frame.render_widget(Clear, rect);
-            let body = vec![Line::raw(format!(" {message}")), Line::raw(""), Line::from(Span::styled(" y confirm   n/Esc cancel", dim()))];
-            frame.render_widget(Paragraph::new(body).wrap(ratatui::widgets::Wrap { trim: false }).block(modal_block(" Confirm ")), rect);
+            let block = modal_block(" Confirm ").padding(Padding::new(2, 2, 1, 1));
+            let inner = block.inner(rect);
+            frame.render_widget(block, rect);
+            let [text, keys] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+            frame.render_widget(Paragraph::new(message.as_str()).wrap(Wrap { trim: false }), text);
+            frame.render_widget(Paragraph::new(Span::styled("y confirm   n/Esc cancel", dim())), keys);
         }
         Modal::Pick { picker, .. } => {
             let rect = centered(area, area.width.saturating_sub(8).min(100), area.height.saturating_sub(4));

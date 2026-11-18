@@ -583,7 +583,7 @@ impl App {
             Err(e) => self.fail(e.to_string()),
             Ok(()) if repos.iter().any(|r| r.name == version.name) => self.fail(format!("{} already exists", version.name)),
             Ok(()) => {
-                picker.add_marked(Choice::new(&version.name, &tilde(version.source.as_deref().unwrap_or(""))));
+                picker.add_marked(base, Choice::new(&version.name, &tilde(version.source.as_deref().unwrap_or(""))));
                 repos.push(version);
             }
         }
