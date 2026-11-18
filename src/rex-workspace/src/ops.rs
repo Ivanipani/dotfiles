@@ -84,7 +84,27 @@ pub fn remove(env: &Env, rex: &Rex, set: &str, names: &[String]) -> Result<Vec<S
 }
 
 /// Save dirty workspaces under bookmarks, forget them, remove the directory and the session.
+/// The session is killed last but even when cleanup fails or the directory is already gone.
 pub fn delete(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
+    let session = rex.find(&session_label(set));
+    let cleaned = remove_set_dir(env, set);
+    if session.is_none() {
+        return cleaned.map(|notes| with_deleted(notes, set));
+    }
+    let killed = session.map(|id| rex.kill(&id)).transpose();
+    match (cleaned, killed) {
+        (Ok(notes), Ok(_)) => Ok(with_deleted(notes, set)),
+        (Err(e), Ok(_)) if !env.set_dir(set).exists() => Ok(vec![format!("closed session ws-{set}; {e:#}")]),
+        (Err(e), _) | (Ok(_), Err(e)) => Err(e),
+    }
+}
+
+fn with_deleted(mut notes: Vec<String>, set: &str) -> Vec<String> {
+    notes.push(format!("deleted {set}"));
+    notes
+}
+
+fn remove_set_dir(env: &Env, set: &str) -> Result<Vec<String>> {
     let dir = env.set_dir(set);
     if !dir.exists() {
         bail!("no set named {set}");
@@ -96,10 +116,6 @@ pub fn delete(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
         notes.extend(jj::forget(&project.path())?);
     }
     std::fs::remove_dir_all(&dir)?;
-    if let Some(session) = rex.find(&session_label(set)) {
-        rex.kill(&session)?;
-    }
-    notes.push(format!("deleted {set}"));
     Ok(notes)
 }
 
