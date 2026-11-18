@@ -53,6 +53,10 @@
     "Stop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/dot-apply.sh\""
+          },
           {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"},
 {% if client == "codex" %}
           {
