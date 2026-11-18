@@ -18,6 +18,7 @@ path = [
     "/bin",
     "/usr/sbin",
     "/sbin",
+    "$HOME/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS",
     "$HOME/.cargo/bin",
 ]
 kubeconfigs = ["$HOME/.kube/config", "$HOME/.kube/doghouse"]
@@ -39,5 +40,6 @@ path = [
     "/opt/homebrew/opt/postgresql@18/bin",
     "/usr/local/go/bin",
     "$HOME/go/bin",
+    "$HOME/Library/Application Support/com.superlogical.rex/RexServer/Versions/Current/Rex Server.app/Contents/MacOS",
     "$HOME/.cargo/bin",
 ]
