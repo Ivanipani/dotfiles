@@ -1,4 +1,5 @@
 require('config.global')
 require('config.keymaps')
 require('config.jj')
+require('config.lsp-idle')
 require('init-lazy')

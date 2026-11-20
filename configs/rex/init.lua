@@ -139,7 +139,7 @@ rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.fi
 
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   ctrl+a w workspaces (shared session)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   ctrl+a w workspaces (shared session)   ctrl+a u processes (rex-procs)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
@@ -359,6 +359,12 @@ local function toggle_hub(ctx)
     rex.client.queue("session.select", { session_id = hub_session() })
   end
 end
+
+-- Process browser: a float running rex-procs for this session's panes.
+rex.bind("command/u", act("float_procs", "Processes", function(ctx)
+  rex.client.queue("client.mode.exit_all")
+  toggle_float("procs", "exec rex-procs", { 0.03, 0.05, 0.94, 0.9 })(ctx)
+end))
 
 -- From the key: leave command mode first. From the TUI (no mode active, where
 -- exit_all would fail) the plain action is used.
