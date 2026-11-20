@@ -1,5 +1,7 @@
 *.wasm
-.claude
+.claude/*
+!.claude/
+!.claude/settings.json
 
 # dot
 .build/

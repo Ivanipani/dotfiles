@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop hook: give agents one chance to activate dotfile changes before finishing.
+# Stop hook, project-scoped via .claude/settings.json and .codex/hooks.json: give agents one chance to activate dotfile changes before finishing.
 set -eu
 
 input=$(cat)

@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "/bin/sh -c 'exec \"$(jj root)/configs/agents/hooks/dot-apply.sh\"'"}
+        ]
+      }
+    ]
+  }
+}
