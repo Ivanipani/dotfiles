@@ -8,7 +8,7 @@ set -eu
 . "$(dirname "$0")/agent-state.sh"
 
 client=${1:?usage: quota-guard.sh claude|codex}
-threshold=${AGENT_QUOTA_THRESHOLD:-90}
+threshold=${AGENT_QUOTA_THRESHOLD:-98}
 input=$(cat)
 now=$(date +%s)
 
