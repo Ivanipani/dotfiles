@@ -8,8 +8,9 @@ export XDG_CONFIG_HOME="$HOME/.config"
 # Where `p10k configure` reads/writes its config (a symlink into the repo).
 typeset -g POWERLEVEL9K_CONFIG_FILE="$XDG_CONFIG_HOME/zsh/p10k/p10k.zsh"
 
-# Powerlevel10k instant prompt; must stay close to the top.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+# Powerlevel10k instant prompt; must stay close to the top. Skipped for
+# `zsh -ic CMD`, like the theme itself (see 06-plugins.zsh).
+if [[ -z $ZSH_EXECUTION_STRING && -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
     source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 

@@ -292,7 +292,7 @@ local function toggle_all(ctx, win)
 end
 
 rex.action{ name = "workspace_jjui", category = section, title = "jjui", run = toggle_float("jjui", "exec jjui", { 0.05, 0.05, 0.9, 0.9 }) }
-rex.action{ name = "float_scratch", category = section, title = "Scratch shell", run = toggle_float("scratch", "exec zsh") }
+rex.action{ name = "float_scratch", category = section, title = "Scratch shell", run = toggle_float("scratch") }
 rex.action{ name = "float_claude", category = section, title = "Claude", run = toggle_float("claude", "exec claude") }
 rex.action{ name = "float_codex", category = section, title = "Codex", run = toggle_float("codex", "exec codex") }
 float_action("float_toggle_all", "Hide/show all", toggle_all, true)
