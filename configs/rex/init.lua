@@ -355,8 +355,8 @@ local function find_window(view, label)
   end
 end
 
--- The hub session with `tab` created (if missing) and focused; created on first use.
-local function show_tab(tab)
+-- The hub session id and `tab`'s window id, creating either on first use.
+local function ensure_tab(tab)
   local id = hub_id()
   if not id then
     local created, err = rex.call("session.create", {
@@ -364,15 +364,17 @@ local function show_tab(tab)
       initial_windows = { { window_label = tab, layout = tab_layout(TABS[tab]) } },
     })
     if err ~= nil then error("session.create: " .. tostring(err), 0) end
-    return created.session_id
+    id = created.session_id
+  elseif not find_window(hub_call(id, "session.view", {}), tab) then
+    hub_call(id, "session.new_window", { window_label = tab, layout = tab_layout(TABS[tab]), focus = false })
   end
-  local view = hub_call(id, "session.view", {})
-  if not find_window(view, tab) then
-    hub_call(id, "session.new_window", { window_label = tab, layout = tab_layout(TABS[tab]), focus = true })
-  else
-    hub_call(id, "session.focus_window", { window_id = find_window(view, tab).window_id })
-  end
-  return id
+  return id, find_window(hub_call(id, "session.view", {}), tab).window_id
+end
+
+-- Go to the tab. The app picks the window itself, so it must be named in session.select.
+local function show_tab(tab)
+  local id, window_id = ensure_tab(tab)
+  rex.client.queue("session.select", { session_id = id, window_id = window_id })
 end
 
 local function active_tab(session_id)
@@ -398,15 +400,13 @@ end
 
 -- In the hub: on this tab, go back; on another tab, switch to it. Elsewhere: go to the tab.
 local function toggle_hub(ctx, tab)
-  if in_hub(ctx) then
-    if active_tab(ctx.session_id) == tab then
-      leave_hub()
-    else
-      show_tab(tab)
-    end
-  else
+  if not in_hub(ctx) then
     came_from = ctx.session_id
-    rex.client.queue("session.select", { session_id = show_tab(tab) })
+    show_tab(tab)
+  elseif active_tab(ctx.session_id) == tab then
+    leave_hub()
+  else
+    show_tab(tab)
   end
 end
 
