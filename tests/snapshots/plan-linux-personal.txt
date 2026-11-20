@@ -3,6 +3,8 @@ claude	symlink	ln -s $REPO/configs/agents/AGENTS.md $HOME/.claude/CLAUDE.md
 claude	symlink	ln -s $REPO/configs/agents/hooks $HOME/.claude/hooks
 claude	symlink	ln -s $REPO/configs/agents/skills $HOME/.claude/skills
 claude	symlink	ln -s $REPO/configs/agents/agents $HOME/.claude/agents
+claude	dir	mkdir -p $HOME/.config/ccstatusline
+claude	symlink	ln -s $REPO/configs/agents/ccstatusline/settings.json $HOME/.config/ccstatusline/settings.json
 claude	render	render settings.json.j2 -> $HOME/.claude/settings.json (copy)
 codex	dir	mkdir -p $HOME/.codex
 codex	symlink	ln -s $REPO/configs/agents/AGENTS.md $HOME/.codex/AGENTS.md
@@ -22,6 +24,7 @@ nushell	symlink	ln -s $REPO/configs/nushell/env.nu $HOME/.config/nushell/env.nu
 nvim	symlink	ln -s $REPO/configs/nvim/config $HOME/.config/nvim
 tools	dir	mkdir -p $HOME/.local/bin
 tools	symlink	ln -s $REPO/bin/dot $HOME/.local/bin/dot
+tools	symlink	ln -s $REPO/src/repo-sync/target/release/repo-sync $HOME/.local/bin/repo-sync
 vcs	dir	mkdir -p $HOME/.config/jj
 vcs	dir	mkdir -p $HOME/.config/jjui
 vcs	render	render jj-config.toml.j2 -> $HOME/.config/jj/config.toml (symlink)
@@ -40,6 +43,8 @@ zellij	fetch	fetch https://github.com/hiasr/vim-zellij-navigator/releases/downlo
 zellij	symlink	ln -s $REPO/configs/zellij/plugins/vim-zellij-navigator.wasm $HOME/.config/zellij/plugins/vim-zellij-navigator.wasm
 zellij	fetch	fetch https://github.com/dj95/zjstatus/releases/download/v0.25.0/zjstatus.wasm -> $REPO/configs/zellij/plugins/zjstatus.wasm
 zellij	symlink	ln -s $REPO/configs/zellij/plugins/zjstatus.wasm $HOME/.config/zellij/plugins/zjstatus.wasm
+zellij	symlink	ln -s $REPO/src/zellij-sessionizer/target/wasm32-wasip1/release/zellij_sessionizer.wasm $HOME/.config/zellij/plugins/zellij-sessionizer.wasm
+zellij	symlink	ln -s $REPO/src/zellij-workspace/target/wasm32-wasip1/release/zellij_workspace.wasm $HOME/.config/zellij/plugins/zellij-workspace.wasm
 zellij	dir	mkdir -p $HOME/.cache/zellij
 zellij	grant	grant 4 plugins their permissions in $HOME/.cache/zellij/permissions.kdl
 zellij	dir	mkdir -p $HOME/scripts

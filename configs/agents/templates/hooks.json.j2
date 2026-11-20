@@ -20,7 +20,7 @@
         ]
       }
     ],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}{% if client == "claude" %}, {"_tag": "ccstatusline-managed", "hooks": [{"type": "command", "command": "bunx -y ccstatusline --hook"}]}{% endif %}],
     "PostToolUse": [{"hooks": [{"type": "command", "command": "\"$HOME/.{{ client }}/hooks/quota-guard.sh\" {{ client }}"}, {"type": "command", "command": "\"$HOME/.{{ client }}/hooks/rex-status.sh\" {{ 'claude-code' if client == 'claude' else 'codex' }}"}]}],
     "PreToolUse": [
       {
@@ -31,7 +31,8 @@
             "command": "\"$HOME/.{{ client }}/hooks/jj-guard.sh\""
           }
         ]
-      }
+      }{% if client == "claude" %},
+      {"_tag": "ccstatusline-managed", "matcher": "Skill", "hooks": [{"type": "command", "command": "bunx -y ccstatusline --hook"}]}{% endif %}
     ],
 {% if client == "claude" %}
     "Notification": [

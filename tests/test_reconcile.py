@@ -320,7 +320,7 @@ def test_remove_reports_what_it_actually_did(world):
     # Reverse order: every file the module owns goes first, so the directory
     # it lived in is empty by the time we reach it.
     assert outcomes[-1] == "rmdir"
-    assert set(outcomes[:-1]) <= {"unlinked", "deleted"}
+    assert set(outcomes[:-1]) <= {"unlinked", "deleted", "rmdir"}
     assert "left in place" not in outcomes
 
 

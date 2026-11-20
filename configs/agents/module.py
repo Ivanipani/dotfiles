@@ -16,6 +16,12 @@ class Claude(Module):
         yield from shared_links(self, root, "CLAUDE.md")
         yield Symlink(self.path("skills"), root / "skills")
         yield Symlink(self.path("agents"), root / "agents")
+        # Symlinked so edits from the ccstatusline TUI land in the repo.
+        yield Dir(host.home / ".config/ccstatusline")
+        yield Symlink(
+            self.path("ccstatusline/settings.json"),
+            host.home / ".config/ccstatusline/settings.json",
+        )
         # Claude rewrites settings; copy mode protects local edits.
         yield Render(
             self.path("templates/settings.json.j2"),

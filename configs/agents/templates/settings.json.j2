@@ -27,7 +27,7 @@
   "agentPushNotifEnabled": true,
   "statusLine": {
     "type": "command",
-    "command": "\"$HOME/.claude/hooks/quota-statusline.sh\""
+    "command": "bunx -y ccstatusline"
   },
   "skipAutoPermissionPrompt": true{% if v.claude.auto_mode %},
   "autoMode": {{ v.claude.auto_mode | json | indent(2) }}{% endif %},

@@ -29,8 +29,9 @@ def test_shared_agent_install(host, ctx, modules):
     assert (home / ".codex/hooks.json").is_symlink()
     assert not (home / ".codex/config.toml").exists()
     for event in ("SessionStart", "PreToolUse"):
+        claude_groups = [g for g in claude["hooks"][event] if "_tag" not in g]
         normalized = (
-            str(claude["hooks"][event])
+            str(claude_groups)
             .replace(".claude", ".codex")
             .replace("claude-code", "codex")
             .replace("--agent claude", "--agent codex")
@@ -260,24 +261,42 @@ def test_quota_guard_is_silent_when_codex_rollout_has_no_rate_limits(repo, tmp_p
     assert _codex_guard(repo, tmp_path, transcript).stdout == ""
 
 
-def test_quota_statusline_caches_rate_limits_for_the_guard(repo, tmp_path):
+def test_quota_cache_stores_rate_limits_for_the_guard(repo, tmp_path):
     limits = {"five_hour": {"used_percentage": 25, "resets_at": FUTURE}}
-    _hook(repo, tmp_path, "quota-statusline.sh", {"rate_limits": limits})
+    _hook(repo, tmp_path, "quota-cache.sh", {"rate_limits": limits})
     assert json.loads((tmp_path / "state/quota/claude.json").read_text()) == limits
 
 
-def test_quota_statusline_prints_a_usage_summary(repo, tmp_path):
-    limits = {
-        "five_hour": {"used_percentage": 25, "resets_at": FUTURE},
-        "seven_day": {"used_percentage": 47.6, "resets_at": FUTURE},
-    }
-    result = _hook(repo, tmp_path, "quota-statusline.sh", {"rate_limits": limits})
-    assert result.stdout.strip() == "5h:25% 7d:47%"
+def test_quota_cache_prints_nothing_so_the_widget_stays_hidden(repo, tmp_path):
+    limits = {"five_hour": {"used_percentage": 25, "resets_at": FUTURE}}
+    result = _hook(repo, tmp_path, "quota-cache.sh", {"rate_limits": limits})
+    assert result.stdout == ""
 
 
-def test_quota_statusline_leaves_cache_alone_without_rate_limits(repo, tmp_path):
-    _hook(repo, tmp_path, "quota-statusline.sh", {})
+def test_quota_cache_leaves_cache_alone_without_rate_limits(repo, tmp_path):
+    _hook(repo, tmp_path, "quota-cache.sh", {})
     assert not (tmp_path / "state/quota/claude.json").exists()
+
+
+def test_claude_statusline_command_is_ccstatusline_so_its_hooks_work(host, ctx, modules):
+    selected = [m for m in modules if m.name == "claude"]
+    reconcile.apply(reconcile.check(reconcile.build(selected, host), ctx), ctx)
+    claude = json.loads((host.home / ".claude/settings.json").read_text())
+    assert "ccstatusline" in claude["statusLine"]["command"]
+
+
+def test_ccstatusline_settings_are_linked_from_the_repo(host, ctx, modules):
+    selected = [m for m in modules if m.name == "claude"]
+    reconcile.apply(reconcile.check(reconcile.build(selected, host), ctx), ctx)
+    linked = host.home / ".config/ccstatusline/settings.json"
+    assert linked.resolve() == host.repo / "configs/agents/ccstatusline/settings.json"
+
+
+def test_ccstatusline_quota_widget_points_at_an_existing_script(repo):
+    config = json.loads((repo / "configs/agents/ccstatusline/settings.json").read_text())
+    widget = next(w for line in config["lines"] for w in line if w["type"] == "custom-command")
+    assert (repo / "configs/agents/hooks/quota-cache.sh").is_file()
+    assert "quota-cache.sh" in widget["commandPath"]
 
 
 def test_handoff_context_points_new_session_at_a_recent_handoff(repo, tmp_path):
