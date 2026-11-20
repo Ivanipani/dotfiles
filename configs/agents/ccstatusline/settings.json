@@ -61,7 +61,7 @@
       },
       {
         "id": "14",
-        "type": "context-percentage",
+        "type": "context-bar",
         "color": "green"
       },
       {
@@ -73,26 +73,6 @@
         "id": "15",
         "type": "session-cost",
         "color": "yellow"
-      },
-      {
-        "id": "21",
-        "type": "separator",
-        "color": "brightBlack"
-      },
-      {
-        "id": "16",
-        "type": "session-clock",
-        "color": "brightBlack"
-      },
-      {
-        "id": "22",
-        "type": "separator",
-        "color": "brightBlack"
-      },
-      {
-        "id": "17",
-        "type": "skills",
-        "color": "magenta"
       }
     ],
     [
@@ -135,17 +115,6 @@
         "id": "31",
         "type": "separator",
         "color": "brightBlack"
-      },
-      {
-        "id": "27",
-        "type": "claude-status",
-        "color": "brightBlack"
-      },
-      {
-        "id": "32",
-        "type": "custom-command",
-        "commandPath": "sh \"$HOME/.claude/hooks/quota-cache.sh\"",
-        "timeout": 2000
       }
     ]
   ],
@@ -169,5 +138,6 @@
     "endCaps": [],
     "autoAlign": false,
     "continueThemeAcrossLines": false
-  }
+  },
+  "exportedBy": "2.2.34"
 }
