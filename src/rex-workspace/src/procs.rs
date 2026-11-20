@@ -22,6 +22,61 @@ pub struct Row {
     pub session: String,
 }
 
+/// Combined CPU and resident memory of a set of processes.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Usage {
+    pub cpu: f32,
+    pub rss_kb: u64,
+}
+
+impl Usage {
+    pub fn of<'a>(procs: impl IntoIterator<Item = &'a Proc>) -> Self {
+        procs.into_iter().fold(Self::default(), |u, p| Self { cpu: u.cpu + p.cpu, rss_kb: u.rss_kb + p.rss_kb })
+    }
+}
+
+/// The machine's capacity and load.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Host {
+    pub cores: u32,
+    pub mem_kb: u64,
+    pub load: [f32; 3],
+}
+
+/// The Rex rows plus what the whole system uses, for attributing a share to Rex.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot {
+    pub rows: Vec<Row>,
+    pub all: Usage,
+    pub host: Option<Host>,
+}
+
+/// Parse `sysctl -n hw.ncpu hw.memsize vm.loadavg`.
+pub fn parse_sysctl(text: &str) -> Option<Host> {
+    let mut lines = text.lines();
+    let cores = lines.next()?.trim().parse().ok()?;
+    let mem_kb = lines.next()?.trim().parse::<u64>().ok()? / 1024;
+    let load: Vec<f32> = lines.next()?.split_whitespace().filter_map(|t| t.parse().ok()).collect();
+    Some(Host { cores, mem_kb, load: load.try_into().ok()? })
+}
+
+fn pct(part: f64, whole: f64) -> String {
+    if whole > 0.0 { format!("{:.0}%", 100.0 * part / whole) } else { "—".into() }
+}
+
+/// Two lines (cpu, memory) saying how much of the system `rex` accounts for.
+pub fn summary(rex: Usage, all: Usage, host: Option<&Host>) -> [String; 2] {
+    let (cpu, rss) = (f64::from(rex.cpu), rex.rss_kb as f64);
+    let mut cpu_line = format!("cpu {:.2} cores · {} of all use", cpu / 100.0, pct(cpu, f64::from(all.cpu)));
+    let mut mem_line = format!("mem {} · {} of all resident", mem(rex.rss_kb), pct(rss, all.rss_kb as f64));
+    if let Some(h) = host {
+        let [one, five, fifteen] = h.load;
+        cpu_line += &format!(" · {} of {} cores · load {one:.2} {five:.2} {fifteen:.2}", pct(cpu, f64::from(h.cores) * 100.0), h.cores);
+        mem_line += &format!(" · {} of {}", pct(rss, h.mem_kb as f64), mem(h.mem_kb));
+    }
+    [cpu_line, mem_line]
+}
+
 /// Parse `ps -axo pid=,ppid=,rss=,pcpu=,etime=,args=`; malformed lines are skipped.
 pub fn parse_ps(text: &str) -> Vec<Proc> {
     text.lines().filter_map(parse_line).collect()
@@ -101,14 +156,19 @@ fn read_ps() -> Result<Vec<Proc>> {
     Ok(parse_ps(&String::from_utf8_lossy(&out.stdout)))
 }
 
+fn read_host() -> Option<Host> {
+    let out = Command::new("sysctl").args(["-n", "hw.ncpu", "hw.memsize", "vm.loadavg"]).output().ok()?;
+    out.status.success().then(|| parse_sysctl(&String::from_utf8_lossy(&out.stdout)))?
+}
+
 /// Processes under the panes of every session (or only `session`), excluding this program's own tree.
-pub fn collect(rex: &Rex, session: Option<&str>) -> Result<Vec<Row>> {
+pub fn collect(rex: &Rex, session: Option<&str>) -> Result<Snapshot> {
     let procs = read_ps()?;
     let roots: HashMap<_, _> = rex.pane_pids(session).into_iter().map(|(label, pid)| (pid, label)).collect();
     let me = std::process::id();
     let mut exclude = ancestors(&procs, me);
     exclude.extend(descendants(&procs, &HashMap::from([(me, String::new())])).into_keys());
-    Ok(build_rows(&procs, &roots, &exclude))
+    Ok(Snapshot { rows: build_rows(&procs, &roots, &exclude), all: Usage::of(&procs), host: read_host() })
 }
 
 /// Send `signal` (`TERM`, `KILL`) to `pid`.
@@ -187,6 +247,54 @@ mod tests {
     fn build_rows_labels_each_row_with_its_root_session() {
         let rows = build_rows(&parse_ps(PS), &roots(&[(100, "work"), (200, "other")]), &HashSet::new());
         assert_eq!(rows.iter().find(|r| r.proc.pid == 200).unwrap().session, "other");
+    }
+
+    fn host() -> Host {
+        Host { cores: 4, mem_kb: 1_048_576, load: [1.5, 1.0, 0.5] }
+    }
+
+    #[test]
+    fn usage_of_sums_cpu_and_memory() {
+        assert_eq!(Usage::of(&parse_ps(PS)[..2]), Usage { cpu: 2.0, rss_kb: 22528 });
+    }
+
+    #[test]
+    fn parse_sysctl_reads_cores_memory_and_load() {
+        // GIVEN
+        let text = "8\n17179869184\n{ 5.24 4.47 4.49 }\n";
+        // WHEN / THEN
+        assert_eq!(parse_sysctl(text), Some(Host { cores: 8, mem_kb: 16 * 1_048_576, load: [5.24, 4.47, 4.49] }));
+    }
+
+    #[test]
+    fn parse_sysctl_rejects_missing_load() {
+        assert_eq!(parse_sysctl("8\n17179869184\n"), None);
+    }
+
+    #[test]
+    fn summary_cpu_shows_cores_share_of_use_share_of_capacity_and_load() {
+        // GIVEN rex uses 200% of the 400% in use on a 4-core machine
+        let [cpu, _] = summary(Usage { cpu: 200.0, rss_kb: 0 }, Usage { cpu: 400.0, rss_kb: 0 }, Some(&host()));
+        // THEN
+        assert_eq!(cpu, "cpu 2.00 cores · 50% of all use · 50% of 4 cores · load 1.50 1.00 0.50");
+    }
+
+    #[test]
+    fn summary_mem_shows_share_of_resident_and_of_physical_memory() {
+        let [_, mem] = summary(Usage { cpu: 0.0, rss_kb: 262_144 }, Usage { cpu: 0.0, rss_kb: 524_288 }, Some(&host()));
+        assert_eq!(mem, "mem 256M · 50% of all resident · 25% of 1.0G");
+    }
+
+    #[test]
+    fn summary_without_host_omits_capacity_and_load() {
+        let [cpu, _] = summary(Usage { cpu: 50.0, rss_kb: 0 }, Usage { cpu: 100.0, rss_kb: 0 }, None);
+        assert_eq!(cpu, "cpu 0.50 cores · 50% of all use");
+    }
+
+    #[test]
+    fn summary_with_nothing_in_use_shows_a_dash_instead_of_dividing_by_zero() {
+        let [cpu, _] = summary(Usage::default(), Usage::default(), None);
+        assert_eq!(cpu, "cpu 0.00 cores · — of all use");
     }
 
     #[test]

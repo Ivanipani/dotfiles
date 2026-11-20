@@ -267,12 +267,13 @@ fn list(env: &Env, rex: &Rex, json: bool) -> Result<()> {
 }
 
 fn list_procs(rex: &Rex, session: Option<&str>) -> Result<()> {
-    let rows = procs::collect(rex, session)?;
+    let snap = procs::collect(rex, session)?;
+    let rows = &snap.rows;
     let mut table = Table::new();
     table.load_style(presets::UTF8_FULL_CONDENSED.with_rounded_corners());
     table.set_content_arrangement(ContentArrangement::Dynamic);
     table.set_header(["SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"].map(|t| Cell::new(t).add_attribute(Attribute::Bold).fg(Color::Cyan)));
-    for r in &rows {
+    for r in rows {
         table.add_row([
             Cell::new(&r.session),
             Cell::new(r.proc.pid),
@@ -286,5 +287,8 @@ fn list_procs(rex: &Rex, session: Option<&str>) -> Result<()> {
         table.force_no_tty();
     }
     println!("{table}");
+    for line in procs::summary(procs::Usage::of(rows.iter().map(|r| &r.proc)), snap.all, snap.host.as_ref()) {
+        println!("rex {line}");
+    }
     Ok(())
 }

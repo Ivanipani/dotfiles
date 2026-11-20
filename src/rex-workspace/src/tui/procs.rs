@@ -4,7 +4,7 @@ use super::app::Status;
 use super::picker::{highlight, ACCENT, MUTED};
 use super::query::{single_line, Query};
 use crate::finder::{FuzzyFinder, Match};
-use crate::procs::{self, mem, Row};
+use crate::procs::{self, mem, Host, Row, Snapshot, Usage};
 use crate::rex::{Rex, HUB_LABEL, TOGGLE_ACTION};
 use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -22,7 +22,7 @@ use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
 
 const MIN_WIDTH: u16 = 60;
-const MIN_HEIGHT: u16 = 10;
+const MIN_HEIGHT: u16 = 11;
 /// Processes change quickly; re-read them in the background this often.
 const REFRESH: Duration = Duration::from_secs(2);
 const BIG: u64 = 2 * 1_048_576;
@@ -50,6 +50,9 @@ pub struct App {
     rex: Rex,
     pub hub: bool,
     pub rows: Vec<Row>,
+    /// What every process on the system uses, and the machine's capacity.
+    pub all: Usage,
+    pub host: Option<Host>,
     finder: FuzzyFinder,
     pub query: Query,
     pub matches: Vec<Match>,
@@ -78,6 +81,8 @@ impl App {
             rex,
             hub,
             rows: vec![],
+            all: Usage::default(),
+            host: None,
             finder: FuzzyFinder::new(Vec::<String>::new()),
             query: Query::default(),
             matches: vec![],
@@ -96,6 +101,12 @@ impl App {
 
     pub fn current(&self) -> Option<&Row> {
         self.rows.get(self.matches.get(self.selected)?.index)
+    }
+
+    pub fn set_snapshot(&mut self, snap: Snapshot) {
+        self.all = snap.all;
+        self.host = snap.host;
+        self.set_rows(snap.rows);
     }
 
     /// Replace the process list, keeping the cursor on the same pid and dropping stale marks.
@@ -287,13 +298,13 @@ pub fn run(rex: Rex, session: Option<String>) -> Result<()> {
 fn event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
-    rows: &mpsc::Receiver<Result<Vec<Row>>>,
+    rows: &mpsc::Receiver<Result<Snapshot>>,
     kick: &mpsc::Sender<()>,
 ) -> Result<()> {
     while !app.quit {
         while let Ok(latest) = rows.try_recv() {
             match latest {
-                Ok(list) => app.set_rows(list),
+                Ok(snap) => app.set_snapshot(snap),
                 Err(e) => app.status = Some(Status { text: format!("{e:#}"), error: true }),
             }
         }
@@ -340,7 +351,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
     let [title, search, list, detail, status, keys] = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(2),
         Constraint::Length(3),
         Constraint::Min(4),
         Constraint::Length(1),
@@ -361,13 +372,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 }
 
 fn render_title(frame: &mut Frame, app: &App, area: Rect) {
-    let total: u64 = app.rows.iter().map(|r| r.proc.rss_kb).sum();
     let marked = if app.marked.is_empty() { String::new() } else { format!(" · {} marked", app.marked.len()) };
-    let line = Line::from(vec![
+    let title = Line::from(vec![
         Span::styled(" rex-workspace procs", Style::default().fg(ACCENT).bold()),
-        Span::styled(format!("   {} processes · {} resident{marked}", app.rows.len(), mem(total)), dim()),
+        Span::styled(format!("   {} processes{marked}", app.rows.len()), dim()),
     ]);
-    frame.render_widget(Paragraph::new(line), area);
+    let [cpu, mem] = procs::summary(Usage::of(app.rows.iter().map(|r| &r.proc)), app.all, app.host.as_ref());
+    let usage = Line::from(Span::styled(format!(" {cpu}  │  {mem}"), dim()));
+    frame.render_widget(Paragraph::new(vec![title, usage]), area);
 }
 
 fn render_search(frame: &mut Frame, app: &App, area: Rect) {
@@ -607,6 +619,16 @@ mod tests {
     fn render_shows_memory_and_commands() {
         let text = drawn(&mut app(), 120, 24);
         assert!(text.contains("rust-analyzer") && text.contains("2.0G"));
+    }
+
+    #[test]
+    fn render_shows_the_share_of_system_cpu_under_rex() {
+        // GIVEN rex rows using 91% cpu out of 182% system-wide
+        let mut app = app();
+        let rows = app.rows.clone();
+        app.set_snapshot(Snapshot { rows, all: Usage { cpu: 182.0, rss_kb: 1 }, host: None });
+        // WHEN / THEN
+        assert!(drawn(&mut app, 160, 24).contains("50% of all use"));
     }
 
     #[test]
