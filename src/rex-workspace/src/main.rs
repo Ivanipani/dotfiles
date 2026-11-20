@@ -2,6 +2,7 @@ mod finder;
 mod jj;
 mod manifest;
 mod ops;
+mod procs;
 mod repos;
 mod rex;
 mod tui;
@@ -46,6 +47,7 @@ Manager keys (none collide with Rex's ctrl+a, ctrl+h/j/k/l or alt+ chords):
   j/k ↑/↓  move          Enter/o  open        n  new set       a  add repos
   x  remove projects     D  delete set       /  fuzzy filter  Tab  focus projects
   r  reload              ?  help             q/Esc  quit
+Procs keys: j/k move  Tab mark  t stop (SIGTERM)  K force kill  / filter  m/c sort by mem/cpu  r refresh  q quit
 In pickers: Tab marks, Ctrl-F names an extra workspace (version) of the focused repo.
 
 Environment:
@@ -55,6 +57,8 @@ Environment:
 
 Examples:
   rex-workspace                       Open the manager
+  rex-workspace procs                 Browse and stop processes under your Rex panes
+  rex-workspace procs --list          The same as a table
   rex-workspace ls                    Table of sets, projects and sessions
   rex-workspace new feat-x api web    Create a set from two repos and open it
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
@@ -81,6 +85,15 @@ enum Command {
         /// Start by prompting for this action
         #[arg(long, value_parser = ["open", "new", "add", "remove", "delete"])]
         action: Option<String>,
+    },
+    /// Browse the processes under your Rex panes, with memory and CPU, and stop them.
+    Procs {
+        /// Only this Rex session (by label)
+        #[arg(short, long)]
+        session: Option<String>,
+        /// Print a table and exit instead of opening the browser
+        #[arg(short, long)]
+        list: bool,
     },
     /// Open a set as a Rex session, or switch to it if already open.
     Open {
@@ -122,7 +135,7 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let interactive = matches!(cli.command, None | Some(Command::Tui { .. }));
+    let interactive = matches!(cli.command, None | Some(Command::Tui { .. }) | Some(Command::Procs { list: false, .. }));
     match run(cli.command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -155,6 +168,8 @@ fn run(command: Option<Command>) -> Result<()> {
     let Some(command) = command else { return manager(env, rex, Launch::default()) };
     match command {
         Command::Ls { json } => list(&env, &rex, json),
+        Command::Procs { session, list: true } => list_procs(&rex, session.as_deref()),
+        Command::Procs { session, list: false } => tui::procs::run(rex, session),
         Command::Tui { set, action } => {
             let action = action.as_deref().map(|a| match a {
                 "open" => Action::Open,
@@ -243,6 +258,29 @@ fn list(env: &Env, rex: &Rex, json: bool) -> Result<()> {
         let open = if session.is_some() { Cell::new("open").fg(Color::Green) } else { Cell::new("—").add_attribute(Attribute::Dim) };
         let tabs = tabs.map_or(Cell::new("—").add_attribute(Attribute::Dim), Cell::new);
         table.add_row([Cell::new(&m.name), Cell::new(names.join(" ")), open, tabs]);
+    }
+    if !std::io::stdout().is_terminal() {
+        table.force_no_tty();
+    }
+    println!("{table}");
+    Ok(())
+}
+
+fn list_procs(rex: &Rex, session: Option<&str>) -> Result<()> {
+    let rows = procs::collect(rex, session)?;
+    let mut table = Table::new();
+    table.load_style(presets::UTF8_FULL_CONDENSED.with_rounded_corners());
+    table.set_content_arrangement(ContentArrangement::Dynamic);
+    table.set_header(["SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"].map(|t| Cell::new(t).add_attribute(Attribute::Bold).fg(Color::Cyan)));
+    for r in &rows {
+        table.add_row([
+            Cell::new(&r.session),
+            Cell::new(r.proc.pid),
+            Cell::new(procs::mem(r.proc.rss_kb)),
+            Cell::new(format!("{:.1}", r.proc.cpu)),
+            Cell::new(&r.proc.etime),
+            Cell::new(&r.proc.args),
+        ]);
     }
     if !std::io::stdout().is_terminal() {
         table.force_no_tty();

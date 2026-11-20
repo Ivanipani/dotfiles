@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const FALLBACK: &str = "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex";
-/// The one session that hosts the manager TUI for the whole Rex app.
-pub const HUB_LABEL: &str = "workspaces";
+/// The one session that hosts the manager TUIs (workspaces, processes) for the whole Rex app.
+pub const HUB_LABEL: &str = "rex-manager";
 /// The init.lua action that jumps to the hub, or back from it.
 pub const TOGGLE_ACTION: &str = "workspace_toggle_plain";
 const SHELL_FLAVOR: &str = "com.superlogical.terminal.shell";
@@ -55,6 +55,21 @@ impl Rex {
     pub fn current_label(&self) -> Option<String> {
         let id = std::env::var("REX_SESSION").ok()?;
         self.sessions().into_iter().find(|s| s.id == id).map(|s| s.label)
+    }
+
+    /// `(session label, pid)` of the program in every terminal pane; `only` limits to one session.
+    pub fn pane_pids(&self, only: Option<&str>) -> Vec<(String, u32)> {
+        let mut out = vec![];
+        for s in self.sessions().into_iter().filter(|s| only.is_none_or(|l| s.label == l)) {
+            let Ok(blocks) = self.json(&["block", "ls", "-s", &s.id, "--json"]) else { continue };
+            for id in blocks["blocks"].as_array().into_iter().flatten().filter_map(|b| b["block_id"].as_str()) {
+                let process = self.json(&["block", "call", "-s", &s.id, "-b", id, "process", "{}"]);
+                if let Some(pid) = process.ok().and_then(|p| p["child"]["pid"].as_u64()) {
+                    out.push((s.label.clone(), pid as u32));
+                }
+            }
+        }
+        out
     }
 
     pub fn call(&self, session: &str, method: &str, args: Value) -> Result<Value> {

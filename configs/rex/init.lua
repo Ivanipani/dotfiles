@@ -139,7 +139,7 @@ rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.fi
 
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   ctrl+a w workspaces (shared session)   ctrl+a u processes (rex-procs)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   ctrl+a w workspaces (shared session)   ctrl+a u processes (rex-manager)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
@@ -306,14 +306,29 @@ for key, action in pairs({
   rex.bind(key, action)
 end
 
--- Workspace sets (rex-workspace): one shared "workspaces" session hosts the manager
--- TUI for the whole app. ctrl+a w jumps there from any session; the same key (or q in
--- the TUI) returns to where you were. The session is created on first use.
+-- Manager TUIs (rex-workspace): one shared "rex-manager" session hosts them for the
+-- whole app, one tab each: "workspaces" (ctrl+a w) and "processes" (ctrl+a u). The
+-- key jumps there from any session; the same key (or q in the TUI) returns to where
+-- you were. The session and tabs are created on first use.
 section = "Command"
-local HUB = "workspaces"
+local HUB = "rex-manager"
 local TOGGLE = "workspace_toggle"
 local TOGGLE_PLAIN = "workspace_toggle_plain" -- named in src/rex-workspace/src/rex.rs
 local came_from -- session to return to; lost on config reload, then we fall back to "previous"
+
+-- One tab per manager TUI. Each pane restarts its TUI if it dies.
+local TABS = {
+  workspaces = "rex-workspace",
+  processes = "rex-workspace procs",
+}
+
+local function tab_layout(command)
+  return { block = {
+    flavor = TERMINAL .. ".shell",
+    label = command,
+    options = { cwd = os.getenv("HOME"), command = { "zsh", "-lic", "while true; do " .. command .. "; sleep 1; done" } },
+  } }
+end
 
 local function session_list()
   local result, err = rex.call("session.list", {})
@@ -321,24 +336,50 @@ local function session_list()
   return result.sessions
 end
 
--- The hub session id, creating it on first use. Its pane restarts the TUI if it dies.
-local function hub_session()
+local function hub_call(session_id, method, args)
+  args.session_id = session_id
+  local result, err = rex.call(method, args)
+  if err ~= nil then error(method .. ": " .. tostring(err), 0) end
+  return result
+end
+
+local function hub_id()
   for _, s in ipairs(session_list()) do
     if s.label == HUB then return s.session_id end
   end
-  local created, err = rex.call("session.create", {
-    label = HUB,
-    initial_windows = { {
-      window_label = "workspaces",
-      layout = { block = {
-        flavor = TERMINAL .. ".shell",
-        label = "rex-workspace",
-        options = { cwd = os.getenv("HOME"), command = { "zsh", "-lic", "while true; do rex-workspace; sleep 1; done" } },
-      } },
-    } },
-  })
-  if err ~= nil then error("session.create: " .. tostring(err), 0) end
-  return created.session_id
+end
+
+local function find_window(view, label)
+  for _, win in ipairs(view.windows) do
+    if win.label == label then return win end
+  end
+end
+
+-- The hub session with `tab` created (if missing) and focused; created on first use.
+local function show_tab(tab)
+  local id = hub_id()
+  if not id then
+    local created, err = rex.call("session.create", {
+      label = HUB,
+      initial_windows = { { window_label = tab, layout = tab_layout(TABS[tab]) } },
+    })
+    if err ~= nil then error("session.create: " .. tostring(err), 0) end
+    return created.session_id
+  end
+  local view = hub_call(id, "session.view", {})
+  if not find_window(view, tab) then
+    hub_call(id, "session.new_window", { window_label = tab, layout = tab_layout(TABS[tab]), focus = true })
+  else
+    hub_call(id, "session.focus_window", { window_id = find_window(view, tab).window_id })
+  end
+  return id
+end
+
+local function active_tab(session_id)
+  local view = hub_call(session_id, "session.view", {})
+  for _, win in ipairs(view.windows) do
+    if win.window_id == view.active_window_id then return win.label end
+  end
 end
 
 local function in_hub(ctx)
@@ -347,32 +388,39 @@ local function in_hub(ctx)
   end
 end
 
-local function toggle_hub(ctx)
-  if in_hub(ctx) then
-    if came_from then
-      rex.client.queue("session.select", { session_id = came_from })
-    else
-      rex.client.queue("session.previous")
-    end
+local function leave_hub()
+  if came_from then
+    rex.client.queue("session.select", { session_id = came_from })
   else
-    came_from = ctx.session_id
-    rex.client.queue("session.select", { session_id = hub_session() })
+    rex.client.queue("session.previous")
   end
 end
 
--- Process browser: a float running rex-procs for this session's panes.
-rex.bind("command/u", act("float_procs", "Processes", function(ctx)
-  rex.client.queue("client.mode.exit_all")
-  toggle_float("procs", "exec rex-procs", { 0.03, 0.05, 0.94, 0.9 })(ctx)
-end))
+-- In the hub: on this tab, go back; on another tab, switch to it. Elsewhere: go to the tab.
+local function toggle_hub(ctx, tab)
+  if in_hub(ctx) then
+    if active_tab(ctx.session_id) == tab then
+      leave_hub()
+    else
+      show_tab(tab)
+    end
+  else
+    came_from = ctx.session_id
+    rex.client.queue("session.select", { session_id = show_tab(tab) })
+  end
+end
 
--- From the key: leave command mode first. From the TUI (no mode active, where
+-- From the keys: leave command mode first. From a TUI (no mode active, where
 -- exit_all would fail) the plain action is used.
-rex.bind("command/w", act(TOGGLE, "Workspaces", function(ctx)
-  rex.client.queue("client.mode.exit_all")
-  toggle_hub(ctx)
-end))
-rex.action{ name = TOGGLE_PLAIN, title = "Workspaces (no mode exit)", category = section, run = toggle_hub }
+local function hub_key(key, name, title, tab)
+  rex.bind("command/" .. key, act(name, title, function(ctx)
+    rex.client.queue("client.mode.exit_all")
+    toggle_hub(ctx, tab)
+  end))
+end
+hub_key("w", TOGGLE, "Workspaces", "workspaces")
+hub_key("u", "processes_toggle", "Processes", "processes")
+rex.action{ name = TOGGLE_PLAIN, title = "Leave rex-manager (no mode exit)", category = section, run = leave_hub }
 section = "Float"
 
 -- float mode

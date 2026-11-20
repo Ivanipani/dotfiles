@@ -2,6 +2,7 @@
 
 mod app;
 mod picker;
+pub mod procs;
 mod query;
 mod ui;
 
