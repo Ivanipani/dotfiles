@@ -5,7 +5,16 @@ email = "{{ v.user.email }}"
 
 [ui]
 diff-editor = ["{{ v.editor.command }}", "-c", "DiffEditor $left $right $output"]
-diff-formatter = ["difft", "--color=always", "$left", "$right"]
+# Limits keep difft from eating GBs: past them it falls back to a line diff.
+# Noisy/generated files are forced to plain text for the same reason.
+diff-formatter = [
+  "difft", "--color=always",
+  "--graph-limit=300000", "--byte-limit=200000", "--parse-error-limit=50",
+  "--override=*.lock:text", "--override=*-lock.json:text", "--override=*.lock.json:text",
+  "--override=*.min.js:text", "--override=*.min.css:text", "--override=*.map:text",
+  "--override=*.svg:text", "--override=*.snap:text", "--override=*.sum:text",
+  "$left", "$right",
+]
 merge-editor = "{{ v.editor.command }}"
 # Standard `<<<<<<< ||||||| ======= >>>>>>>` markers instead of jj's own
 # `%%%%%%%` diff style, so conflicts left in the working copy look the same as
