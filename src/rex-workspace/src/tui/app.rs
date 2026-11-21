@@ -2,9 +2,8 @@
 //!
 //! Keys avoid what Rex binds globally: ctrl+a (prefix), ctrl+h/j/k/l, and every alt+ chord.
 
-use super::picker::{Choice, Outcome, Picker};
-use super::query::Query;
-use crate::finder::{FuzzyFinder, Match};
+use claw::widgets::{Outcome, PickerState, TextInput};
+use claw::{Choice, FuzzyFinder, Match};
 use crate::jj;
 use crate::manifest::{session_label, validate_name, Env, Project};
 use crate::ops;
@@ -100,6 +99,22 @@ impl Job {
     }
 }
 
+/// A titled picker modal.
+pub struct Picker {
+    pub title: String,
+    pub state: PickerState,
+}
+
+impl Picker {
+    pub fn new(title: impl Into<String>, choices: Vec<Choice<()>>, multi: bool) -> Self {
+        Self { title: title.into(), state: PickerState::new(&choices, multi) }
+    }
+}
+
+fn choice(label: &str, detail: &str) -> Choice<()> {
+    Choice::new((), label).description(detail)
+}
+
 pub enum Input {
     NewName,
     /// Naming an extra version of `repos[base]`; the picker it came from is restored afterwards.
@@ -119,7 +134,7 @@ pub enum Pick {
 
 pub enum Modal {
     Help,
-    Input { title: String, query: Query, purpose: Input },
+    Input { title: String, query: TextInput, purpose: Input },
     Confirm { message: String, purpose: Confirm },
     Pick { picker: Picker, purpose: Pick, repos: Vec<Project> },
 }
@@ -139,7 +154,7 @@ pub struct App {
     pub env: Env,
     pub rex: Rex,
     pub sets: Vec<SetRow>,
-    pub query: Query,
+    pub query: TextInput,
     pub matches: Vec<Match>,
     pub set_table: TableState,
     pub project_table: TableState,
@@ -163,7 +178,7 @@ impl App {
             env,
             rex,
             sets: vec![],
-            query: Query::default(),
+            query: TextInput::default(),
             matches: vec![],
             set_table: TableState::default(),
             project_table: TableState::default(),
@@ -272,7 +287,7 @@ impl App {
 
     pub fn refilter(&mut self, keep: Option<&str>) {
         let mut finder = FuzzyFinder::new(self.sets.iter().map(SetRow::haystack));
-        self.matches = finder.search(&self.query.text);
+        self.matches = finder.search(self.query.text());
         let at = keep.and_then(|k| self.matches.iter().position(|m| self.sets[m.index].name == k)).unwrap_or(0);
         self.set_table.select((!self.matches.is_empty()).then_some(at));
         self.reset_projects();
@@ -368,7 +383,11 @@ impl App {
     }
 
     fn prompt_new(&mut self) {
-        self.modal = Some(Modal::Input { title: " New set — name ".into(), query: Query::default(), purpose: Input::NewName });
+        self.prompt_name("");
+    }
+
+    fn prompt_name(&mut self, name: &str) {
+        self.modal = Some(Modal::Input { title: " New set — name ".into(), query: TextInput::new(name), purpose: Input::NewName });
     }
 
     fn begin_create(&mut self, name: String) {
@@ -407,14 +426,17 @@ impl App {
             .map(|p| {
                 let source = tilde(p.source.as_deref().unwrap_or(""));
                 let detail = if have.contains(&p.name) { format!("in set · {source}") } else { source };
-                Choice::new(&p.name, &detail)
+                choice(&p.name, &detail)
             })
             .collect();
         let title = match purpose {
             Pick::NewRepos(_) => format!(" New set {set} — choose repositories "),
             _ => format!(" Add to {set} "),
         };
-        self.modal = Some(Modal::Pick { picker: Picker::new(title, choices, true), purpose, repos });
+        let mut picker = Picker::new(title, choices, true);
+        // Creating a set is a two-step flow: Esc returns to naming it.
+        picker.state = picker.state.action('f', "version").back(matches!(purpose, Pick::NewRepos(_)));
+        self.modal = Some(Modal::Pick { picker, purpose, repos });
     }
 
     fn begin_remove(&mut self) {
@@ -431,7 +453,7 @@ impl App {
                 return;
             }
         }
-        let choices = set.projects.iter().map(|p| Choice::new(&p.name, &tilde(p.source.as_deref().unwrap_or("")))).collect();
+        let choices = set.projects.iter().map(|p| choice(&p.name, &tilde(p.source.as_deref().unwrap_or("")))).collect();
         let picker = Picker::new(format!(" Remove from {set_name} "), choices, true);
         self.modal = Some(Modal::Pick { picker, purpose: Pick::RemoveProjects(set_name), repos: vec![] });
     }
@@ -467,7 +489,7 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => {
-                self.query = Query::default();
+                self.query.clear();
                 self.mode = Mode::Browse;
                 self.refilter(None);
             }
@@ -495,9 +517,9 @@ impl App {
         match key.code {
             KeyCode::Char('c') if ctrl => self.leave(),
             KeyCode::Char('q') => self.leave(),
-            KeyCode::Esc if self.query.text.is_empty() => self.leave(),
+            KeyCode::Esc if self.query.text().is_empty() => self.leave(),
             KeyCode::Esc => {
-                self.query = Query::default();
+                self.query.clear();
                 self.refilter(None);
             }
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
@@ -543,9 +565,9 @@ impl App {
             Modal::Input { title, mut query, purpose } => match key.code {
                 KeyCode::Esc => {}
                 KeyCode::Enter => match purpose {
-                    Input::NewName => self.begin_create(query.text.trim().to_string()),
+                    Input::NewName => self.begin_create(query.text().trim().to_string()),
                     Input::Version { picker, purpose, repos, base } => {
-                        self.add_version(picker, purpose, repos, base, query.text.trim())
+                        self.add_version(picker, purpose, repos, base, query.text().trim())
                     }
                 },
                 _ => {
@@ -563,13 +585,18 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Enter => {}
                 _ => self.modal = Some(Modal::Confirm { message, purpose }),
             },
-            Modal::Pick { mut picker, purpose, repos } => match picker.key(key) {
+            Modal::Pick { mut picker, purpose, repos } => match picker.state.key(key) {
                 Outcome::Continue => self.modal = Some(Modal::Pick { picker, purpose, repos }),
+                Outcome::Back => {
+                    if let Pick::NewRepos(name) = purpose {
+                        self.prompt_name(&name);
+                    }
+                }
                 Outcome::Cancel => {}
-                Outcome::Version(base) => {
+                Outcome::Action(_, base) => {
                     let title = format!(" Version of {} — name ", repos[base].name);
                     let purpose = Input::Version { picker, purpose, repos, base };
-                    self.modal = Some(Modal::Input { title, query: Query::default(), purpose });
+                    self.modal = Some(Modal::Input { title, query: TextInput::default(), purpose });
                 }
                 Outcome::Accept(indices) => self.accept_pick(purpose, repos, indices),
             },
@@ -583,7 +610,7 @@ impl App {
             Err(e) => self.fail(e.to_string()),
             Ok(()) if repos.iter().any(|r| r.name == version.name) => self.fail(format!("{} already exists", version.name)),
             Ok(()) => {
-                picker.add_marked(base, Choice::new(&version.name, &tilde(version.source.as_deref().unwrap_or(""))));
+                picker.state.push_marked(base, &choice(&version.name, &tilde(version.source.as_deref().unwrap_or(""))));
                 repos.push(version);
             }
         }
@@ -739,7 +766,7 @@ mod tests {
         press(&mut app, '/');
         press(&mut app, 'q');
         // THEN it edits the filter instead of quitting
-        assert!(!app.quit && app.query.text == "q");
+        assert!(!app.quit && app.query.text() == "q");
     }
 
     #[test]
@@ -901,12 +928,42 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut app = app(tmp.path(), &[]);
         let repos = vec![Project { name: "api".into(), source: Some("/src/api".into()), feature: None }];
-        let picker = Picker::new("t", vec![Choice::new("api", "")], true);
+        let picker = Picker::new("t", vec![choice("api", "")], true);
         // WHEN
         app.add_version(picker, Pick::NewRepos("demo".into()), repos, 0, "v2");
         app.key(key(KeyCode::Enter));
         // THEN accepting queues only the version
         assert!(matches!(&app.pending, Some(Job::Create { picks, .. }) if picks.len() == 1 && picks[0].name == "api-v2"));
+    }
+
+    fn new_set_picker(app: &mut App) {
+        let repos = vec![Project { name: "api".into(), source: None, feature: None }];
+        let picker = Picker::new("t", vec![choice("api", "")], true);
+        app.modal = Some(Modal::Pick { picker, purpose: Pick::NewRepos("demo".into()), repos });
+    }
+
+    #[test]
+    fn esc_in_the_new_set_repo_picker_goes_back_to_naming_it() {
+        // GIVEN the repository page of creating "demo"
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[]);
+        new_set_picker(&mut app);
+        // WHEN
+        app.key(key(KeyCode::Esc));
+        // THEN the name page is back, still holding the name
+        assert!(matches!(&app.modal, Some(Modal::Input { purpose: Input::NewName, query, .. }) if query.text() == "demo"));
+    }
+
+    #[test]
+    fn ctrl_c_in_the_new_set_repo_picker_abandons_the_flow() {
+        // GIVEN the repository page of creating "demo"
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[]);
+        new_set_picker(&mut app);
+        // WHEN
+        app.key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        // THEN
+        assert!(app.modal.is_none());
     }
 
     #[test]

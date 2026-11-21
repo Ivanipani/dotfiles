@@ -1,0 +1,4 @@
+[net]
+# claw (the shared CLI look and feel) is fetched from the private edifice repo over SSH.
+# The git CLI honours ssh-agent and ~/.ssh/config, which Cargo's built-in client does not fully.
+git-fetch-with-cli = true

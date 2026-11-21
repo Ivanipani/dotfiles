@@ -148,6 +148,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
 
 [[package]]
+name = "claw"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "comfy-table",
+ "crossterm",
+ "libc",
+ "nucleo",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -768,16 +785,13 @@ dependencies = [
  "anstream",
  "anyhow",
  "clap",
- "comfy-table",
+ "claw",
  "crossterm",
- "nucleo",
  "ratatui",
  "serde",
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
- "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]

@@ -1,4 +1,3 @@
-mod finder;
 mod jj;
 mod manifest;
 mod ops;
@@ -7,26 +6,18 @@ mod repos;
 mod rex;
 mod tui;
 
-use anstream::{eprintln, println};
+use anstream::eprintln;
 use anyhow::{bail, Result};
-use clap::builder::styling::{AnsiColor, Effects, Styles};
+use claw::console;
+use claw::output::{Format, OutputArgs, Tabular};
+use claw::table::{self, Cell};
 use clap::{Parser, Subcommand};
-use comfy_table::{presets, Attribute, Cell, Color, ContentArrangement, Table};
 use manifest::{session_label, Env};
 use rex::Rex;
-use serde_json::json;
+use serde::Serialize;
 use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 use tui::{Action, Launch};
-
-const STYLES: Styles = Styles::styled()
-    .header(AnsiColor::Magenta.on_default().effects(Effects::BOLD))
-    .usage(AnsiColor::Magenta.on_default().effects(Effects::BOLD))
-    .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
-    .placeholder(AnsiColor::Green.on_default())
-    .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
-    .valid(AnsiColor::Green.on_default())
-    .invalid(AnsiColor::Yellow.on_default());
 
 /// Workspace sets of jj workspaces, each opened as a Rex session.
 ///
@@ -41,7 +32,7 @@ const STYLES: Styles = Styles::styled()
 #[command(
     name = "rex-workspace",
     version,
-    styles = STYLES,
+    styles = claw::cli::STYLES,
     after_long_help = "\
 Manager keys (none collide with Rex's ctrl+a, ctrl+h/j/k/l or alt+ chords):
   j/k ↑/↓  move          Enter/o  open        n  new set       a  add repos
@@ -60,6 +51,7 @@ Examples:
   rex-workspace procs                 Browse and stop processes under your Rex panes
   rex-workspace procs --list          The same as a table
   rex-workspace ls                    Table of sets, projects and sessions
+  rex-workspace ls --json             The same as JSON (automatic when piped)
   rex-workspace new feat-x api web    Create a set from two repos and open it
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
   rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
@@ -68,16 +60,15 @@ Examples:
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+
+    #[command(flatten)]
+    output: OutputArgs,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// List sets with their projects and session state.
-    Ls {
-        /// Emit JSON instead of a table
-        #[arg(long)]
-        json: bool,
-    },
+    Ls,
     /// Open the manager, optionally straight into an action on a set.
     Tui {
         /// Set to focus (default: this session's set)
@@ -136,10 +127,10 @@ enum Command {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let interactive = matches!(cli.command, None | Some(Command::Tui { .. }) | Some(Command::Procs { list: false, .. }));
-    match run(cli.command) {
+    match run(cli.command, cli.output.format()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m {e:#}");
+            claw::console::error(format!("{e:#}"));
             // A float closes with its process; hold the message long enough to read.
             if interactive && std::io::stdin().is_terminal() {
                 eprintln!("press Enter to close");
@@ -151,24 +142,23 @@ fn main() -> ExitCode {
 }
 
 fn manager(env: Env, rex: Rex, launch: Launch) -> Result<()> {
-    for line in tui::run(env, rex, launch)? {
-        println!("{line}");
-    }
+    print_notes(tui::run(env, rex, launch)?);
     Ok(())
 }
 
+/// What a command did, for people: stderr, so stdout carries only data.
 fn print_notes(notes: Vec<String>) {
     for note in notes {
-        println!("{note}");
+        console::done(note, None);
     }
 }
 
-fn run(command: Option<Command>) -> Result<()> {
+fn run(command: Option<Command>, format: Format) -> Result<()> {
     let (env, rex) = (Env::from_process(), Rex::locate());
     let Some(command) = command else { return manager(env, rex, Launch::default()) };
     match command {
-        Command::Ls { json } => list(&env, &rex, json),
-        Command::Procs { session, list: true } => list_procs(&rex, session.as_deref()),
+        Command::Ls => list(&env, &rex, format),
+        Command::Procs { session, list: true } => list_procs(&rex, session.as_deref(), format),
         Command::Procs { session, list: false } => tui::procs::run(rex, session),
         Command::Tui { set, action } => {
             let action = action.as_deref().map(|a| match a {
@@ -230,65 +220,53 @@ fn confirm(prompt: &str) -> bool {
     answer.trim().eq_ignore_ascii_case("y")
 }
 
-fn list(env: &Env, rex: &Rex, json: bool) -> Result<()> {
+/// One `ls` row: a set, its projects and its Rex session.
+#[derive(Serialize)]
+struct Listing {
+    set: String,
+    projects: Vec<manifest::Project>,
+    open: bool,
+    session_id: Option<String>,
+    tabs: Option<usize>,
+}
+
+impl Tabular for Listing {
+    const COLUMNS: &'static [&'static str] = &["SET", "PROJECTS", "SESSION", "TABS"];
+
+    fn row(&self) -> Vec<Cell> {
+        let names: Vec<_> = self.projects.iter().map(|p| p.name.as_str()).collect();
+        let open = if self.open { table::ok("open") } else { table::optional(None::<&str>) };
+        vec![Cell::new(&self.set), Cell::new(names.join(" ")), open, table::optional(self.tabs)]
+    }
+}
+
+fn list(env: &Env, rex: &Rex, format: Format) -> Result<()> {
     let sessions = rex.sessions();
     let rows: Vec<_> = env
         .sets()
         .into_iter()
         .map(|m| {
             let session = sessions.iter().find(|s| s.label == session_label(&m.name));
-            let tabs = session.and_then(|s| rex.tab_count(&s.id));
-            (m, session.cloned(), tabs)
+            Listing {
+                tabs: session.and_then(|s| rex.tab_count(&s.id)),
+                open: session.is_some(),
+                session_id: session.map(|s| s.id.clone()),
+                set: m.name,
+                projects: m.projects,
+            }
         })
         .collect();
-    if json {
-        let out: Vec<_> = rows
-            .iter()
-            .map(|(m, s, tabs)| json!({"set": m.name, "projects": m.projects, "open": s.is_some(), "session_id": s.as_ref().map(|s| &s.id), "tabs": tabs}))
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&out)?);
-        return Ok(());
-    }
-    let mut table = Table::new();
-    table.load_style(presets::UTF8_FULL_CONDENSED.with_rounded_corners());
-    table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(["SET", "PROJECTS", "SESSION", "TABS"].map(|t| Cell::new(t).add_attribute(Attribute::Bold).fg(Color::Cyan)));
-    for (m, session, tabs) in &rows {
-        let names: Vec<_> = m.projects.iter().map(|p| p.name.as_str()).collect();
-        let open = if session.is_some() { Cell::new("open").fg(Color::Green) } else { Cell::new("—").add_attribute(Attribute::Dim) };
-        let tabs = tabs.map_or(Cell::new("—").add_attribute(Attribute::Dim), Cell::new);
-        table.add_row([Cell::new(&m.name), Cell::new(names.join(" ")), open, tabs]);
-    }
-    if !std::io::stdout().is_terminal() {
-        table.force_no_tty();
-    }
-    println!("{table}");
+    format.list(&rows, "no workspace sets yet; create one with rex-workspace new");
     Ok(())
 }
 
-fn list_procs(rex: &Rex, session: Option<&str>) -> Result<()> {
+fn list_procs(rex: &Rex, session: Option<&str>, format: Format) -> Result<()> {
     let snap = procs::collect(rex, session)?;
-    let rows = &snap.rows;
-    let mut table = Table::new();
-    table.load_style(presets::UTF8_FULL_CONDENSED.with_rounded_corners());
-    table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(["SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"].map(|t| Cell::new(t).add_attribute(Attribute::Bold).fg(Color::Cyan)));
-    for r in rows {
-        table.add_row([
-            Cell::new(&r.session),
-            Cell::new(r.proc.pid),
-            Cell::new(procs::mem(r.proc.rss_kb)),
-            Cell::new(format!("{:.1}", r.proc.cpu)),
-            Cell::new(&r.proc.etime),
-            Cell::new(&r.proc.args),
-        ]);
-    }
-    if !std::io::stdout().is_terminal() {
-        table.force_no_tty();
-    }
-    println!("{table}");
-    for line in procs::summary(procs::Usage::of(rows.iter().map(|r| &r.proc)), snap.all, snap.host.as_ref()) {
-        println!("rex {line}");
+    format.list(&snap.rows, "no processes under your Rex panes");
+    if !format.is_json() {
+        for line in procs::summary(procs::Usage::of(snap.rows.iter().map(|r| &r.proc)), snap.all, snap.host.as_ref()) {
+            console::note(format!("rex {line}"));
+        }
     }
     Ok(())
 }

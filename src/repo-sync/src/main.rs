@@ -1,21 +1,15 @@
 mod manifest;
 mod reconcile;
 
-use anstream::{eprintln, println};
-use clap::builder::styling::{AnsiColor, Effects, Styles};
+use claw::output::{OutputArgs, Tabular};
+use claw::table::{self, Cell};
+use claw::console;
+use serde::Serialize;
 use clap::Parser;
-use reconcile::{apply, observe, plan, State};
+use reconcile::{apply, observe, plan, State, Step};
 use std::path::PathBuf;
 use std::process::ExitCode;
-
-const STYLES: Styles = Styles::styled()
-    .header(AnsiColor::Magenta.on_default().effects(Effects::BOLD))
-    .usage(AnsiColor::Magenta.on_default().effects(Effects::BOLD))
-    .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
-    .placeholder(AnsiColor::Green.on_default())
-    .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
-    .valid(AnsiColor::Green.on_default())
-    .invalid(AnsiColor::Yellow.on_default());
+use std::time::Instant;
 
 /// Reconcile a YAML list of repos to colocated jujutsu checkouts.
 ///
@@ -26,7 +20,7 @@ const STYLES: Styles = Styles::styled()
 #[command(
     name = "repo-sync",
     version,
-    styles = STYLES,
+    styles = claw::cli::STYLES,
     after_long_help = "\
 Reconciliation:
   missing or empty dir   init, remote, fetch, checkout
@@ -44,7 +38,8 @@ Manifest:
 
 Examples:
   repo-sync repos.yaml              Sync every repo in the manifest
-  repo-sync --dry-run repos.yaml    Show the planned steps, change nothing"
+  repo-sync --dry-run repos.yaml    Show the planned steps, change nothing
+  repo-sync -n repos.yaml | jq      The plan as JSON (automatic when piped)"
 )]
 struct Cli {
     /// YAML manifest listing the repos to reconcile
@@ -54,47 +49,118 @@ struct Cli {
     /// Print the planned steps for each repo without running them
     #[arg(short = 'n', long)]
     dry_run: bool,
+
+    #[command(flatten)]
+    output: OutputArgs,
+}
+
+/// What happened to one repo: the steps planned for it, and whether they ran.
+#[derive(Serialize)]
+struct Outcome {
+    repo: String,
+    steps: Vec<String>,
+    applied: bool,
+    error: Option<String>,
+}
+
+impl Tabular for Outcome {
+    const COLUMNS: &'static [&'static str] = &["REPO", "STEPS", "RESULT"];
+
+    fn row(&self) -> Vec<Cell> {
+        let steps = table::optional(Some(self.steps.join(", ")).filter(|s| !s.is_empty()));
+        let result = match (&self.error, self.applied) {
+            (Some(e), _) => table::error(format!("failed: {e}")),
+            (None, true) => table::ok("ok"),
+            (None, false) => table::dim("planned"),
+        };
+        vec![Cell::new(&self.repo), steps, result]
+    }
+}
+
+fn sync(target: &manifest::Target, dry_run: bool) -> Outcome {
+    let mut steps = vec![];
+    let result = observe(&target.path).map_err(|e| e.to_string()).and_then(|state| {
+        steps = plan(&state, &target.url)?;
+        if dry_run {
+            return Ok(());
+        }
+        apply(target, &steps).map_err(|e| {
+            // Don't leave a half-made clone behind for the next run to trip over.
+            if state == State::Missing {
+                let _ = std::fs::remove_dir_all(&target.path);
+            }
+            e.to_string()
+        })
+    });
+    Outcome {
+        repo: target.name.clone(),
+        steps: steps.iter().map(Step::to_string).collect(),
+        applied: !dry_run && result.is_ok(),
+        error: result.err(),
+    }
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let (name_style, step_style, err_style) =
-        (STYLES.get_literal(), STYLES.get_placeholder(), STYLES.get_error());
-
     let targets = match manifest::load(&cli.file) {
         Ok(targets) => targets,
         Err(e) => {
-            eprintln!("{err_style}error:{err_style:#} {e}");
+            console::error(e);
             return ExitCode::FAILURE;
         }
     };
 
-    let mut failed = 0;
-    for target in &targets {
-        let result = observe(&target.path).map_err(|e| e.to_string()).and_then(|state| {
-            let steps = plan(&state, &target.url)?;
-            let list = steps.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ");
-            println!("{name_style}{}{name_style:#}: {step_style}{list}{step_style:#}", target.name);
+    let outcomes: Vec<_> = targets
+        .iter()
+        .map(|target| {
             if cli.dry_run {
-                return Ok(());
+                return sync(target, true);
             }
-            apply(target, &steps).map_err(|e| {
-                // Don't leave a half-made clone behind for the next run to trip over.
-                if state == State::Missing {
-                    let _ = std::fs::remove_dir_all(&target.path);
-                }
-                e.to_string()
-            })
-        });
-        if let Err(e) = result {
-            eprintln!("{name_style}{}{name_style:#}: {err_style}FAILED:{err_style:#} {e}", target.name);
-            failed += 1;
-        }
-    }
+            console::start(&target.name);
+            let started = Instant::now();
+            let outcome = sync(target, false);
+            match &outcome.error {
+                None => console::done(&target.name, Some(started.elapsed())),
+                Some(e) => console::failed(&target.name, e, Some(started.elapsed())),
+            }
+            outcome
+        })
+        .collect();
+    cli.output.format().list(&outcomes, "no repos in the manifest");
 
+    let failed = outcomes.iter().filter(|o| o.error.is_some()).count();
     if failed > 0 {
-        eprintln!("{err_style}{failed} of {} repos failed{err_style:#}", targets.len());
+        console::error(format!("{failed} of {} repos failed", targets.len()));
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn outcome(applied: bool, error: Option<&str>) -> Outcome {
+        Outcome { repo: "dotfiles".into(), steps: vec!["fetch".into()], applied, error: error.map(str::to_owned) }
+    }
+
+    #[test]
+    fn row_for_a_dry_run_is_planned() {
+        assert_eq!(outcome(false, None).row()[2], table::dim("planned"));
+    }
+
+    #[test]
+    fn row_for_an_applied_sync_is_ok() {
+        assert_eq!(outcome(true, None).row()[2], table::ok("ok"));
+    }
+
+    #[test]
+    fn row_for_a_failed_sync_includes_the_error() {
+        assert_eq!(outcome(false, Some("no route")).row()[2], table::error("failed: no route"));
+    }
+
+    #[test]
+    fn row_lists_the_steps() {
+        assert_eq!(outcome(false, None).row()[1], Cell::new("fetch"));
+    }
 }

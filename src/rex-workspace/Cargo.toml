@@ -7,16 +7,14 @@ description = "Workspace sets of jj workspaces as Rex sessions, with a full-scre
 [dependencies]
 anstream = "1.0.0"
 anyhow = "1.0.104"
+# Shared look and feel of every CLI; lives in the private edifice repo, fetched over SSH.
+claw = { git = "ssh://git@github.com/Ivanipani/edifice.git", branch = "main", features = ["clap"] }
 clap = { version = "4.6.7", features = ["derive", "wrap_help", "env"] }
-comfy-table = "8.0.1"
 crossterm = "0.29"
-nucleo = "0.5"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
-unicode-segmentation = "1"
-unicode-width = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

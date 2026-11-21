@@ -5,7 +5,8 @@ edition = "2021"
 description = "Reconcile a YAML list of repos to colocated jujutsu checkouts on this machine."
 
 [dependencies]
-anstream = "1.0.0"
+# Shared look and feel of every CLI; lives in the private edifice repo, fetched over SSH.
+claw = { git = "ssh://git@github.com/Ivanipani/edifice.git", branch = "main", features = ["clap"] }
 clap = { version = "4.6.7", features = ["derive", "wrap_help", "env"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_yaml_ng = "0.10.0"

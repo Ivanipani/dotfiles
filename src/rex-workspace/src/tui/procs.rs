@@ -1,25 +1,23 @@
 //! Full-screen process browser: what runs under your Rex panes, and a way to stop it.
 
 use super::app::Status;
-use super::picker::{highlight, ACCENT, MUTED};
-use super::query::{single_line, Query};
-use crate::finder::{FuzzyFinder, Match};
+use claw::style::{self, glyph, Theme};
+use claw::widgets::{highlight, hints, modal, pane, popup, status, TextInput};
+use claw::{single_line, FuzzyFinder, Match};
 use crate::procs::{self, mem, Host, Row, Snapshot, Usage};
 use crate::rex::{Rex, HUB_LABEL, TOGGLE_ACTION};
 use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    layout::{Constraint, Flex, Layout, Rect},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Layout, Rect},
+    style::Style,
     text::{Line, Span},
-    widgets::{Block, BorderType, Cell, Clear, Padding, Paragraph, Row as TableRow, Table, TableState, Wrap},
+    widgets::{Cell, Paragraph, Row as TableRow, Table, TableState, Wrap},
     Frame,
 };
 use std::collections::BTreeSet;
-use std::io::IsTerminal;
 use std::sync::mpsc;
 use std::time::Duration;
-use unicode_width::UnicodeWidthStr;
 
 const MIN_WIDTH: u16 = 60;
 const MIN_HEIGHT: u16 = 11;
@@ -54,7 +52,7 @@ pub struct App {
     pub all: Usage,
     pub host: Option<Host>,
     finder: FuzzyFinder,
-    pub query: Query,
+    pub query: TextInput,
     pub matches: Vec<Match>,
     pub selected: usize,
     pub marked: BTreeSet<u32>,
@@ -84,7 +82,7 @@ impl App {
             all: Usage::default(),
             host: None,
             finder: FuzzyFinder::new(Vec::<String>::new()),
-            query: Query::default(),
+            query: TextInput::default(),
             matches: vec![],
             selected: 0,
             marked: BTreeSet::new(),
@@ -123,7 +121,7 @@ impl App {
     }
 
     fn refilter(&mut self) {
-        self.matches = self.finder.search(&self.query.text);
+        self.matches = self.finder.search(self.query.text());
         self.selected = self.selected.min(self.matches.len().saturating_sub(1));
     }
 
@@ -204,7 +202,7 @@ impl App {
         match key.code {
             KeyCode::Enter => self.mode = Mode::Browse,
             KeyCode::Esc => {
-                self.query = Query::default();
+                self.query.clear();
                 self.refilter();
                 self.mode = Mode::Browse;
             }
@@ -223,8 +221,8 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Char('q') => self.leave(),
-            KeyCode::Esc if !self.query.text.is_empty() => {
-                self.query = Query::default();
+            KeyCode::Esc if !self.query.text().is_empty() => {
+                self.query.clear();
                 self.refilter();
             }
             KeyCode::Esc => self.leave(),
@@ -276,8 +274,8 @@ fn sort_rows(rows: &mut [Row], sort: Sort) {
 
 /// Browse until quit. `session` limits the view to one Rex session by label.
 pub fn run(rex: Rex, session: Option<String>) -> Result<()> {
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        bail!("the interactive view needs a terminal; use --list for a table");
+    if let claw::TerminalStatus::Unavailable(reason) = claw::TerminalStatus::detect() {
+        bail!("the interactive view needs a terminal ({reason}); use --list for a table");
     }
     let (rows_tx, rows_rx) = mpsc::channel();
     let (kick_tx, kick_rx) = mpsc::channel::<()>();
@@ -325,22 +323,15 @@ fn event_loop(
 
 // --- rendering --------------------------------------------------------------
 
-fn dim() -> Style {
-    Style::default().fg(MUTED)
+fn theme() -> Theme {
+    Theme::default()
 }
 
-fn pane(title: String) -> Block<'static> {
-    Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(ACCENT))
-        .title(Span::styled(title, Style::default().fg(ACCENT).bold()))
-}
-
-fn mem_color(kb: u64) -> Color {
+fn mem_style(kb: u64) -> Style {
     match kb {
-        k if k >= BIG => Color::Red,
-        k if k >= MEDIUM => Color::Yellow,
-        _ => Color::Reset,
+        k if k >= BIG => style::error(),
+        k if k >= MEDIUM => style::warn(),
+        _ => Style::default(),
     }
 }
 
@@ -350,7 +341,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         frame.render_widget(Paragraph::new("Enlarge the pane\nq to quit"), area);
         return;
     }
-    let [title, search, list, detail, status, keys] = Layout::vertical([
+    let [title, search, list, detail, status_area, keys] = Layout::vertical([
         Constraint::Length(2),
         Constraint::Length(3),
         Constraint::Min(4),
@@ -361,11 +352,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     .areas(area);
     app.page = usize::from(list.height.saturating_sub(3)).max(1);
     render_title(frame, app, title);
-    render_search(frame, app, search);
+    let count = format!(" {}/{} ", app.matches.len(), app.rows.len());
+    let filtering = app.mode == Mode::Filter && app.confirm.is_none();
+    app.query.search(frame, search, &count, filtering, "press / to filter by session, pid or command", &theme());
     render_table(frame, app, list);
     render_detail(frame, app, detail);
-    render_status(frame, app, status);
-    frame.render_widget(Paragraph::new(hints(app)).style(dim()), keys);
+    let line = app.status.as_ref().map_or_else(Line::default, |s| status(&s.text, s.error, &theme()));
+    frame.render_widget(Paragraph::new(line), status_area);
+    frame.render_widget(Paragraph::new(hints(key_hints(app), &theme())), keys);
     if let Some(confirm) = &app.confirm {
         render_confirm(frame, confirm, area);
     }
@@ -374,35 +368,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 fn render_title(frame: &mut Frame, app: &App, area: Rect) {
     let marked = if app.marked.is_empty() { String::new() } else { format!(" · {} marked", app.marked.len()) };
     let title = Line::from(vec![
-        Span::styled(" rex-workspace procs", Style::default().fg(ACCENT).bold()),
-        Span::styled(format!("   {} processes{marked}", app.rows.len()), dim()),
+        Span::styled(" rex-workspace procs", style::heading()),
+        Span::styled(format!("   {} processes{marked}", app.rows.len()), style::muted()),
     ]);
     let [cpu, mem] = procs::summary(Usage::of(app.rows.iter().map(|r| &r.proc)), app.all, app.host.as_ref());
-    let usage = Line::from(Span::styled(format!(" {cpu}  │  {mem}"), dim()));
+    let usage = Line::from(Span::styled(format!(" {cpu}  │  {mem}"), style::muted()));
     frame.render_widget(Paragraph::new(vec![title, usage]), area);
-}
-
-fn render_search(frame: &mut Frame, app: &App, area: Rect) {
-    let filtering = app.mode == Mode::Filter;
-    let tail = app.query.tail(usize::from(area.width.saturating_sub(5)));
-    let body = if tail.is_empty() && !filtering {
-        Line::from(Span::styled("  press / to filter by session, pid or command", dim()))
-    } else {
-        Line::from(format!("> {tail}"))
-    };
-    let count = format!(" {}/{} ", app.matches.len(), app.rows.len());
-    frame.render_widget(
-        Paragraph::new(body).block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(if filtering { ACCENT } else { MUTED }))
-                .title(Span::styled(count, dim())),
-        ),
-        area,
-    );
-    if filtering && app.confirm.is_none() {
-        frame.set_cursor_position((area.x + 3 + UnicodeWidthStr::width(tail) as u16, area.y + 1));
-    }
 }
 
 fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -413,7 +384,7 @@ fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = format!(" Processes · by {sort} ");
     if app.matches.is_empty() {
         let text = if app.rows.is_empty() { "\n  Looking for processes under your Rex panes…" } else { "\n  No matches. Esc clears the filter." };
-        frame.render_widget(Paragraph::new(text).style(dim()).block(pane(title)), area);
+        frame.render_widget(Paragraph::new(text).style(style::muted()).block(pane(title, true, &theme())), area);
         return;
     }
     let rows: Vec<_> = app.matches.iter().map(|m| table_row(&app.rows[m.index], &m.indices, app.marked.contains(&app.rows[m.index].proc.pid))).collect();
@@ -429,10 +400,10 @@ fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Min(20),
         ],
     )
-    .header(TableRow::new(["", "SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"].map(Cell::from)).style(Style::default().fg(ACCENT).bold()))
-    .block(pane(title))
-    .highlight_symbol("› ")
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD));
+    .header(TableRow::new(["", "SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"].map(Cell::from)).style(style::heading()))
+    .block(pane(title, true, &theme()))
+    .highlight_symbol(glyph::POINTER)
+    .row_highlight_style(style::selected());
     app.table.select(Some(app.selected));
     frame.render_stateful_widget(table, area, &mut app.table);
 }
@@ -443,55 +414,47 @@ fn table_row(row: &Row, indices: &[u32], marked: bool) -> TableRow<'static> {
     let command_start = session_len + 1 + pid_len + 1;
     let session_hits: Vec<_> = indices.iter().copied().filter(|&i| i < session_len).collect();
     let command_hits: Vec<_> = indices.iter().filter_map(|&i| i.checked_sub(command_start)).collect();
-    let cpu = if row.proc.cpu >= 50.0 { Style::default().fg(Color::Yellow) } else { Style::default() };
+    let cpu = if row.proc.cpu >= 50.0 { style::warn() } else { Style::default() };
     TableRow::new(vec![
-        Cell::from(if marked { "●" } else { "" }).style(Style::default().fg(ACCENT)),
-        Cell::from(Line::from(highlight(&single_line(&row.session), &session_hits))),
-        Cell::from(row.proc.pid.to_string()).style(dim()),
-        Cell::from(mem(row.proc.rss_kb)).style(Style::default().fg(mem_color(row.proc.rss_kb))),
+        Cell::from(if marked { glyph::OPEN } else { "" }).style(style::accent()),
+        Cell::from(Line::from(highlight(&single_line(&row.session), &session_hits, &theme()))),
+        Cell::from(row.proc.pid.to_string()).style(style::muted()),
+        Cell::from(mem(row.proc.rss_kb)).style(mem_style(row.proc.rss_kb)),
         Cell::from(format!("{:.1}", row.proc.cpu)).style(cpu),
-        Cell::from(row.proc.etime.clone()).style(dim()),
-        Cell::from(Line::from(highlight(&single_line(&row.proc.args), &command_hits))),
+        Cell::from(row.proc.etime.clone()).style(style::muted()),
+        Cell::from(Line::from(highlight(&single_line(&row.proc.args), &command_hits, &theme()))),
     ])
 }
 
 fn render_detail(frame: &mut Frame, app: &App, area: Rect) {
     let text = app.current().map(|r| format!(" {} · ppid {} · {}", r.session, r.proc.ppid, single_line(&r.proc.args))).unwrap_or_default();
-    frame.render_widget(Paragraph::new(text).style(dim()), area);
+    frame.render_widget(Paragraph::new(text).style(style::muted()), area);
 }
 
-fn render_status(frame: &mut Frame, app: &App, area: Rect) {
-    let line = match &app.status {
-        Some(s) if s.error => Line::from(Span::styled(format!(" ✗ {}", s.text), Style::default().fg(Color::Red))),
-        Some(s) => Line::from(Span::styled(format!(" ✓ {}", s.text), Style::default().fg(Color::Green))),
-        None => Line::default(),
-    };
-    frame.render_widget(Paragraph::new(line), area);
-}
-
-fn hints(app: &App) -> &'static str {
+fn key_hints(app: &App) -> &'static [(&'static str, &'static str)] {
     match (&app.confirm, app.mode) {
-        (Some(_), _) => " y confirm  n/Esc cancel",
-        (None, Mode::Filter) => " type to filter  ↑↓ move  Enter keep  Esc clear",
-        (None, Mode::Browse) => " ↑↓/jk move  Tab mark  t stop  K force kill  / filter  m mem  c cpu  r refresh  q quit",
+        (Some(_), _) => &[("y", "confirm"), ("n/Esc", "cancel")],
+        (None, Mode::Filter) => &[("type", "to filter"), ("↑↓", "move"), ("Enter", "keep"), ("Esc", "clear")],
+        (None, Mode::Browse) => &[
+            ("↑↓/jk", "move"),
+            ("Tab", "mark"),
+            ("t", "stop"),
+            ("K", "force kill"),
+            ("/", "filter"),
+            ("m", "mem"),
+            ("c", "cpu"),
+            ("r", "refresh"),
+            ("q", "quit"),
+        ],
     }
 }
 
-fn centered(area: Rect, width: u16, height: u16) -> Rect {
-    let [v] = Layout::vertical([Constraint::Length(height.min(area.height))]).flex(Flex::Center).areas(area);
-    let [h] = Layout::horizontal([Constraint::Length(width.min(area.width))]).flex(Flex::Center).areas(v);
-    h
-}
-
 fn render_confirm(frame: &mut Frame, confirm: &Confirm, area: Rect) {
-    let rect = centered(area, area.width.saturating_sub(8).min(72), 9);
-    frame.render_widget(Clear, rect);
-    let block = pane(" Confirm ".into()).padding(Padding::new(2, 2, 1, 1));
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
+    let theme = theme();
+    let inner = modal(frame, popup(area, area.width.saturating_sub(8).min(72), 9), "Confirm", &theme);
     let [text, keys] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
     frame.render_widget(Paragraph::new(confirm.message.as_str()).wrap(Wrap { trim: false }), text);
-    frame.render_widget(Paragraph::new(Span::styled("y confirm   n/Esc cancel", dim())), keys);
+    frame.render_widget(Paragraph::new(hints(&[("y", "confirm"), ("n/Esc", "cancel")], &theme)), keys);
 }
 
 #[cfg(test)]

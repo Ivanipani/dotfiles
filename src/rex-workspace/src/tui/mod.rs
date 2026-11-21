@@ -1,9 +1,7 @@
 //! Full-screen workspace manager.
 
 mod app;
-mod picker;
 pub mod procs;
-mod query;
 mod ui;
 
 pub use app::{Action, Launch};
@@ -12,7 +10,6 @@ use crate::manifest::Env;
 use crate::rex::Rex;
 use anyhow::{bail, Result};
 use crossterm::event::{self, Event, KeyEventKind};
-use std::io::IsTerminal;
 use std::time::{Duration, Instant};
 
 /// The hub stays open for hours; keep it current without a keypress.
@@ -20,8 +17,8 @@ const REFRESH: Duration = Duration::from_secs(5);
 
 /// Run the TUI; returns lines to print after the terminal is restored.
 pub fn run(env: Env, rex: Rex, launch: Launch) -> Result<Vec<String>> {
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        bail!("the interactive view needs a terminal; name the set and repos explicitly");
+    if let claw::TerminalStatus::Unavailable(reason) = claw::TerminalStatus::detect() {
+        bail!("the interactive view needs a terminal ({reason}); name the set and repos explicitly");
     }
     let mut app = app::App::new(env, rex);
     app.launch(launch);

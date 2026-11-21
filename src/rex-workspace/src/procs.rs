@@ -2,10 +2,13 @@
 
 use crate::rex::Rex;
 use anyhow::{bail, Result};
+use claw::output::Tabular;
+use claw::table::{self, Cell};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::process::Command;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Proc {
     pub pid: u32,
     pub ppid: u32,
@@ -16,10 +19,26 @@ pub struct Proc {
 }
 
 /// A process and the Rex session whose pane it runs under.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Row {
+    #[serde(flatten)]
     pub proc: Proc,
     pub session: String,
+}
+
+impl Tabular for Row {
+    const COLUMNS: &'static [&'static str] = &["SESSION", "PID", "MEM", "CPU%", "TIME", "COMMAND"];
+
+    fn row(&self) -> Vec<Cell> {
+        vec![
+            Cell::new(&self.session),
+            Cell::new(self.proc.pid),
+            Cell::new(mem(self.proc.rss_kb)),
+            Cell::new(format!("{:.1}", self.proc.cpu)),
+            table::dim(&self.proc.etime),
+            Cell::new(&self.proc.args),
+        ]
+    }
 }
 
 /// Combined CPU and resident memory of a set of processes.
