@@ -23,8 +23,12 @@ local function restart_servers()
         return
     end
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and vim.bo[buf].filetype ~= '' then
-            vim.api.nvim_exec_autocmds('FileType', { buffer = buf })
+        local ft = vim.bo[buf].filetype
+        if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and ft ~= '' then
+            -- ftplugins act on the current buffer, so make `buf` current.
+            vim.api.nvim_buf_call(buf, function()
+                vim.api.nvim_exec_autocmds('FileType', { pattern = ft })
+            end)
         end
     end
 end
