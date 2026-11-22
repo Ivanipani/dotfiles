@@ -7,6 +7,7 @@ use claw::{Choice, FuzzyFinder, Match};
 use crate::jj;
 use crate::manifest::{session_label, validate_name, Env, Project};
 use crate::ops;
+use crate::park::{self, State};
 use crate::repos;
 use crate::rex::{Rex, HUB_LABEL, TOGGLE_ACTION};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -22,6 +23,8 @@ pub enum Action {
     Add,
     Remove,
     Delete,
+    Close,
+    Pause,
 }
 
 /// What the TUI should do as soon as it has loaded.
@@ -48,6 +51,7 @@ pub struct SetRow {
     pub name: String,
     pub projects: Vec<ProjectRow>,
     pub session: Option<String>,
+    pub state: State,
     pub tabs: Option<usize>,
     pub updated: Option<SystemTime>,
 }
@@ -85,6 +89,9 @@ pub enum Job {
     Add { set: String, picks: Vec<Project> },
     Remove { set: String, names: Vec<String> },
     Delete(String),
+    Close(String),
+    Pause(String),
+    Resume(String),
 }
 
 impl Job {
@@ -95,6 +102,9 @@ impl Job {
             Job::Add { picks, .. } => format!("adding {} repo(s)…", picks.len()),
             Job::Remove { names, .. } => format!("removing {} project(s)…", names.len()),
             Job::Delete(s) => format!("deleting {s}…"),
+            Job::Close(s) => format!("closing {s}…"),
+            Job::Pause(s) => format!("pausing {s}…"),
+            Job::Resume(s) => format!("resuming {s}…"),
         }
     }
 }
@@ -123,6 +133,7 @@ pub enum Input {
 
 pub enum Confirm {
     DeleteSet(String),
+    CloseSet(String),
     RemoveProject { set: String, name: String },
 }
 
@@ -209,8 +220,11 @@ impl App {
             .env
             .sets()
             .into_iter()
-            .map(|m| SetRow {
-                session: sessions.iter().find(|s| s.label == session_label(&m.name)).map(|s| s.id.clone()),
+            .map(|m| {
+                let session = sessions.iter().find(|s| s.label == session_label(&m.name)).map(|s| s.id.clone());
+                SetRow {
+                state: park::state(&self.env, &m.name, session.is_some()),
+                session,
                 tabs: None,
                 updated: std::fs::metadata(self.env.set_dir(&m.name).join("workspace.yaml")).and_then(|m| m.modified()).ok(),
                 projects: m
@@ -228,7 +242,7 @@ impl App {
                     })
                     .collect(),
                 name: m.name,
-            })
+            }})
             .collect();
         for set in &mut self.sets {
             set.tabs = previous.iter().find(|p| p.name == set.name).and_then(|p| p.tabs);
@@ -336,7 +350,7 @@ impl App {
         if let Some(name) = &target {
             self.refilter(Some(name));
         }
-        let needs_set = matches!(launch.action, Some(Action::Add | Action::Remove | Action::Delete));
+        let needs_set = matches!(launch.action, Some(Action::Add | Action::Remove | Action::Delete | Action::Close | Action::Pause));
         if needs_set && target.is_none() {
             return self.fail("not inside a ws- session: select a set, then press the key again");
         }
@@ -349,6 +363,8 @@ impl App {
             Some(Action::Add) => self.begin_add(),
             Some(Action::Remove) => self.begin_remove(),
             Some(Action::Delete) => self.begin_delete(),
+            Some(Action::Close) => self.begin_close(),
+            Some(Action::Pause) => self.toggle_pause(),
             None => {}
         }
     }
@@ -472,6 +488,38 @@ impl App {
         }
     }
 
+    /// The selected set, when it has a session to act on.
+    fn selected_live(&mut self) -> Option<(String, State)> {
+        match self.current().map(|s| (s.name.clone(), s.state)) {
+            live @ Some((_, State::Open | State::Paused)) => live,
+            Some((name, _)) => {
+                self.fail(format!("{name} has no open session"));
+                None
+            }
+            None => {
+                self.fail("no set selected");
+                None
+            }
+        }
+    }
+
+    fn begin_close(&mut self) {
+        if let Some((name, _)) = self.selected_live() {
+            let message = format!(
+                "Close {name}? Its session ends and every program in it stops; open it again to bring the same tabs back."
+            );
+            self.modal = Some(Modal::Confirm { message, purpose: Confirm::CloseSet(name) });
+        }
+    }
+
+    fn toggle_pause(&mut self) {
+        self.pending = match self.selected_live() {
+            Some((name, State::Paused)) => Some(Job::Resume(name)),
+            Some((name, _)) => Some(Job::Pause(name)),
+            None => None,
+        };
+    }
+
     // --- keys ---------------------------------------------------------------
 
     pub fn key(&mut self, key: KeyEvent) {
@@ -551,6 +599,8 @@ impl App {
             KeyCode::Char('a') => self.begin_add(),
             KeyCode::Char('x') => self.begin_remove(),
             KeyCode::Char('D') => self.begin_delete(),
+            KeyCode::Char('c') => self.begin_close(),
+            KeyCode::Char('p') => self.toggle_pause(),
             _ => {}
         }
     }
@@ -579,6 +629,7 @@ impl App {
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     self.pending = Some(match purpose {
                         Confirm::DeleteSet(set) => Job::Delete(set),
+                        Confirm::CloseSet(set) => Job::Close(set),
                         Confirm::RemoveProject { set, name } => Job::Remove { set, names: vec![name] },
                     })
                 }
@@ -648,11 +699,15 @@ impl App {
             Job::Add { set, picks } => ops::add(&self.env, &self.rex, set, picks),
             Job::Remove { set, names } => ops::remove(&self.env, &self.rex, set, names),
             Job::Delete(set) => ops::delete(&self.env, &self.rex, set),
+            Job::Close(set) => ops::close(&self.env, &self.rex, set),
+            Job::Pause(set) => ops::pause(&self.env, &self.rex, set),
+            Job::Resume(set) => ops::resume(&self.env, &self.rex, set),
         };
         // The hub is shared and long-lived: it stays up after switching away.
         let leaves = !self.hub && matches!(job, Job::Open(_) | Job::Create { .. });
         let select = match &job {
             Job::Create { set, .. } | Job::Add { set, .. } | Job::Remove { set, .. } => Some(set.clone()),
+            Job::Close(set) | Job::Pause(set) | Job::Resume(set) => Some(set.clone()),
             _ => None,
         };
         match result {
@@ -1000,6 +1055,61 @@ mod tests {
     }
 
     #[test]
+    fn c_on_a_set_without_a_session_reports_it_instead_of_asking() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"])]);
+        press(&mut app, 'c');
+        assert!(app.modal.is_none() && app.status.as_ref().is_some_and(|s| s.text.contains("no open session")));
+    }
+
+    fn open_set(tmp: &Path, state: State) -> App {
+        let mut app = app(tmp, &[("abe", &["one"])]);
+        app.sets[0].state = state;
+        app
+    }
+
+    #[test]
+    fn c_on_an_open_set_asks_for_confirmation_before_closing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = open_set(tmp.path(), State::Open);
+        press(&mut app, 'c');
+        assert!(matches!(app.modal, Some(Modal::Confirm { purpose: Confirm::CloseSet(_), .. })) && app.pending.is_none());
+    }
+
+    #[test]
+    fn confirming_a_close_queues_the_job() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = open_set(tmp.path(), State::Open);
+        press(&mut app, 'c');
+        press(&mut app, 'y');
+        assert!(matches!(&app.pending, Some(Job::Close(s)) if s == "abe"));
+    }
+
+    #[test]
+    fn p_on_an_open_set_queues_pausing_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = open_set(tmp.path(), State::Open);
+        press(&mut app, 'p');
+        assert!(matches!(&app.pending, Some(Job::Pause(s)) if s == "abe"));
+    }
+
+    #[test]
+    fn p_on_a_paused_set_queues_resuming_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = open_set(tmp.path(), State::Paused);
+        press(&mut app, 'p');
+        assert!(matches!(&app.pending, Some(Job::Resume(s)) if s == "abe"));
+    }
+
+    #[test]
+    fn p_on_a_closed_set_queues_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = open_set(tmp.path(), State::Closed);
+        press(&mut app, 'p');
+        assert!(app.pending.is_none() && app.status.as_ref().is_some_and(|s| s.error));
+    }
+
+    #[test]
     fn dirty_counts_only_dirty_projects() {
         let row = |dirty| ProjectRow {
             name: "p".into(),
@@ -1007,7 +1117,8 @@ mod tests {
             status: Some(jj::Status { dirty, ..jj::Status::default() }),
             loaded: true,
         };
-        let set = SetRow { name: "s".into(), projects: vec![row(true), row(false)], session: None, tabs: None, updated: None };
+        let set =
+            SetRow { name: "s".into(), projects: vec![row(true), row(false)], session: None, state: State::Idle, tabs: None, updated: None };
         assert_eq!(set.dirty(), 1);
     }
 }

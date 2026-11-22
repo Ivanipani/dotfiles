@@ -150,6 +150,7 @@ checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
 [[package]]
 name = "claw"
 version = "0.1.0"
+source = "git+ssh://git@github.com/Ivanipani/edifice.git?branch=main#4d83e54a5bae4646843b4971f793f36bb53a759c"
 dependencies = [
  "clap",
  "comfy-table",

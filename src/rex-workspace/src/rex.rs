@@ -1,6 +1,7 @@
 //! The Rex CLI: sessions, windows (tabs) and layers.
 
 use anyhow::{anyhow, bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Command;
@@ -16,6 +17,14 @@ const SHELL_FLAVOR: &str = "com.superlogical.terminal.shell";
 pub struct Session {
     pub id: String,
     pub label: String,
+}
+
+/// A tab and its tiled layout, in the shape `session.create` and `session.new_window` take.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Window {
+    #[serde(rename = "window_label")]
+    pub label: String,
+    pub layout: Value,
 }
 
 #[derive(Clone)]
@@ -82,9 +91,26 @@ impl Rex {
         Some(view.get("windows")?.as_array()?.len())
     }
 
-    pub fn create(&self, label: &str, cwd: &str, window: &str) -> Result<String> {
-        let v = self.json(&["new", label, "-c", cwd, "--window", window, "--json"])?;
-        v["session_id"].as_str().map(String::from).ok_or_else(|| anyhow!("rex new returned no session_id"))
+    /// Create a session with all its tabs at once, then make tab `active` the active one.
+    pub fn create(&self, label: &str, windows: &[Window], active: usize) -> Result<String> {
+        let args = json!({"label": label, "initial_windows": windows});
+        let v = self.json(&["api", "call", "session.create", &args.to_string()])?;
+        let id = v["session_id"].as_str().map(String::from).ok_or_else(|| anyhow!("session.create returned no session_id"))?;
+        if let Some(window) = v["initial_windows"][active]["window_id"].as_str() {
+            let _ = self.call(&id, "session.focus_window", json!({"window_id": window}));
+        }
+        Ok(id)
+    }
+
+    /// The session's tabs as they are now, with the index of the active one; floating layers are left out.
+    /// A pane comes back in its last directory, re-running the program it was started with (else a shell).
+    pub fn capture(&self, session: &str, fallback_cwd: &str) -> Result<(Vec<Window>, usize)> {
+        let view = self.call(session, "session.view", json!({}))?;
+        Ok(windows_from_view(&view, |block| {
+            let id = block["block_id"].as_str().unwrap_or_default();
+            let process = self.json(&["block", "call", "-s", session, "-b", id, "process", "{}"]).unwrap_or(Value::Null);
+            restored_block(block["label"].as_str().unwrap_or("shell"), &process, fallback_cwd, crate::procs::args_of)
+        }))
     }
 
     pub fn kill(&self, session: &str) -> Result<()> {
@@ -116,9 +142,8 @@ impl Rex {
         })
     }
 
-    /// A tab holding a single nvim pane; jjui and agents live in floats opened on demand.
-    pub fn add_window(&self, session: &str, name: &str, dir: &str) -> Result<()> {
-        self.call(session, "session.new_window", json!({"window_label": name, "layout": project_layout(dir), "focus": false}))?;
+    pub fn add_window(&self, session: &str, window: &Window) -> Result<()> {
+        self.call(session, "session.new_window", json!({"window_label": window.label, "layout": window.layout, "focus": false}))?;
         Ok(())
     }
 
@@ -173,6 +198,52 @@ fn project_layout(dir: &str) -> Value {
     block("nvim", dir, Some(in_shell("exec nvim .")))
 }
 
+/// A tab holding a single nvim pane; jjui and agents live in floats opened on demand.
+pub fn project_window(name: &str, dir: &str) -> Window {
+    Window { label: name.into(), layout: project_layout(dir) }
+}
+
+/// A tab holding a plain shell.
+pub fn shell_window(label: &str, dir: &str) -> Window {
+    Window { label: label.into(), layout: block("shell", dir, None) }
+}
+
+/// Convert each window's tiled layout from `session.view` into a creatable layout, panes built by `pane`.
+fn windows_from_view(view: &Value, pane: impl Fn(&Value) -> Value) -> (Vec<Window>, usize) {
+    let mut windows = vec![];
+    let mut active = 0;
+    for w in view["windows"].as_array().into_iter().flatten() {
+        let layers = w["layers"].as_array().into_iter().flatten();
+        let Some(tiled) = layers.clone().find(|l| l["kind"] == "tiled") else { continue };
+        let blocks: Vec<&Value> = layers.flat_map(|l| l["blocks"].as_array().into_iter().flatten()).collect();
+        if w["window_id"] == view["active_window_id"] {
+            active = windows.len();
+        }
+        let label = w["label"].as_str().unwrap_or_default().to_string();
+        windows.push(Window { label, layout: layout_node(&tiled["layout"], &blocks, &pane) });
+    }
+    (windows, active)
+}
+
+fn layout_node(node: &Value, blocks: &[&Value], pane: &impl Fn(&Value) -> Value) -> Value {
+    if let Some(split) = node.get("split") {
+        let (before, after) = (layout_node(&split["before"], blocks, pane), layout_node(&split["after"], blocks, pane));
+        return json!({"split": {"direction": split["direction"], "ratio": split["ratio"], "before": before, "after": after}});
+    }
+    let found = blocks.iter().find(|b| b["block_id"] == node["block_id"]);
+    pane(found.copied().unwrap_or(&Value::Null))
+}
+
+/// A pane started with a command (its child is not a login shell) re-runs that command; any other gets a shell.
+fn restored_block(label: &str, process: &Value, fallback_cwd: &str, args_of: impl Fn(u32) -> Option<String>) -> Value {
+    let child = &process["child"];
+    let login = child["name"] == "login" || child["argv0"].as_str().is_some_and(|a| a.starts_with('-'));
+    let launched = child["pid"].as_u64().filter(|_| !login).and_then(|pid| args_of(pid as u32));
+    let at = if launched.is_some() { child } else { &process["foreground"] };
+    let cwd = at["cwd"].as_str().unwrap_or(fallback_cwd);
+    block(label, cwd, launched.map(|args| in_shell(&format!("exec {args}"))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +268,79 @@ mod tests {
         // THEN
         assert_eq!(l["block"]["label"], "nvim");
         assert!(l.get("split").is_none());
+    }
+
+    fn shell_pane(cwd: &str) -> Value {
+        json!({"child": {"pid": 1, "name": "login"}, "foreground": {"pid": 2, "name": "zsh", "argv0": "-zsh", "cwd": cwd}})
+    }
+
+    #[test]
+    fn restored_block_for_a_login_shell_is_a_shell_in_its_last_directory() {
+        // GIVEN a plain shell pane that moved to /work
+        let b = restored_block("shell", &shell_pane("/work"), "/set", |_| Some("ignored".into()));
+        // THEN
+        assert_eq!(b, block("shell", "/work", None));
+    }
+
+    #[test]
+    fn restored_block_for_a_launched_program_re_runs_its_command_line() {
+        // GIVEN a pane started straight into nvim
+        let process = json!({"child": {"pid": 7, "name": "nvim", "argv0": "nvim", "cwd": "/p"}});
+        // WHEN
+        let b = restored_block("nvim", &process, "/set", |pid| (pid == 7).then(|| "nvim .".into()));
+        // THEN
+        assert_eq!(b, block("nvim", "/p", Some(in_shell("exec nvim ."))));
+    }
+
+    #[test]
+    fn restored_block_without_process_details_falls_back_to_the_set_directory() {
+        assert_eq!(restored_block("shell", &Value::Null, "/set", |_| None), block("shell", "/set", None));
+    }
+
+    fn view() -> Value {
+        json!({"active_window_id": "w2", "windows": [
+            {"window_id": "w1", "label": "root", "layers": [
+                {"kind": "tiled", "layout": {"block_id": "b1"}, "blocks": [{"block_id": "b1", "label": "shell"}]},
+                {"kind": "floating", "layout": {"block_id": "f1"}, "blocks": [{"block_id": "f1", "label": "scratch"}]}]},
+            {"window_id": "w2", "label": "api", "layers": [
+                {"kind": "tiled", "layout": {"split": {"direction": "horizontal", "ratio": 0.3,
+                    "before": {"block_id": "b2"}, "after": {"block_id": "b3"}}},
+                 "blocks": [{"block_id": "b2", "label": "nvim"}, {"block_id": "b3", "label": "logs"}]}]}]})
+    }
+
+    fn labels(b: &Value) -> Value {
+        b["label"].clone()
+    }
+
+    #[test]
+    fn windows_from_view_keeps_tab_labels_in_order() {
+        let (windows, _) = windows_from_view(&view(), labels);
+        assert_eq!(windows.iter().map(|w| w.label.as_str()).collect::<Vec<_>>(), ["root", "api"]);
+    }
+
+    #[test]
+    fn windows_from_view_reports_the_active_tab() {
+        assert_eq!(windows_from_view(&view(), labels).1, 1);
+    }
+
+    #[test]
+    fn windows_from_view_leaves_out_floating_layers() {
+        assert_eq!(windows_from_view(&view(), labels).0[0].layout, json!("shell"));
+    }
+
+    #[test]
+    fn windows_from_view_keeps_split_direction_ratio_and_both_sides() {
+        let (windows, _) = windows_from_view(&view(), labels);
+        assert_eq!(
+            windows[1].layout,
+            json!({"split": {"direction": "horizontal", "ratio": 0.3, "before": "nvim", "after": "logs"}})
+        );
+    }
+
+    #[test]
+    fn window_serializes_with_the_api_field_names() {
+        let w = serde_json::to_value(shell_window("root", "/d")).unwrap();
+        assert!(w.get("window_label").is_some() && w.get("layout").is_some());
     }
 
     #[test]

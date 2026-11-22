@@ -1,8 +1,9 @@
 //! Set lifecycle: shared by the CLI and the TUI. Each operation returns notes to show the user.
 
 use crate::manifest::{session_label, validate_name, Env, Project};
-use crate::rex::Rex;
-use crate::{jj, repos};
+use crate::park::{self, Snapshot};
+use crate::rex::{project_window, Rex};
+use crate::{jj, procs, repos};
 use anyhow::{anyhow, bail, Result};
 
 /// Resolve names to repositories under the roots; `repo:feature` names an extra workspace of `repo`.
@@ -54,7 +55,7 @@ pub fn add(env: &Env, rex: &Rex, set: &str, picks: &[Project]) -> Result<Vec<Str
         // Save per project so a later failure keeps the ones already created.
         env.save(&manifest)?;
         if let Some(session) = &session {
-            rex.add_window(session, &p.name, &dir.to_string_lossy())?;
+            rex.add_window(session, &project_window(&p.name, &dir.to_string_lossy()))?;
         }
         notes.push(format!("added {}", p.name));
     }
@@ -87,6 +88,10 @@ pub fn remove(env: &Env, rex: &Rex, set: &str, names: &[String]) -> Result<Vec<S
 /// The session is killed last but even when cleanup fails or the directory is already gone.
 pub fn delete(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     let session = rex.find(&session_label(set));
+    // Stopped processes would outlive the session's terminals.
+    if session.is_some() && park::is_paused(env, set) {
+        signal_set(rex, set, "CONT")?;
+    }
     let cleaned = remove_set_dir(env, set);
     if session.is_none() {
         return cleaned.map(|notes| with_deleted(notes, set));
@@ -119,27 +124,85 @@ fn remove_set_dir(env: &Env, set: &str) -> Result<Vec<String>> {
     Ok(notes)
 }
 
-/// Create the set's session (one tab per project) unless open, then switch to it.
+/// Switch to the set's session, resuming it if paused; without one, create it from the saved layout
+/// of a closed set, else one tab per project.
 pub fn open(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     let manifest = env.load(set)?;
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
+    let mut notes = vec![];
     let id = match rex.find(&session_label(set)) {
-        Some(id) => id,
-        None => {
-            let id = rex.create(&session_label(set), &env.set_dir(set).to_string_lossy(), set)?;
-            for p in &manifest.projects {
-                rex.add_window(&id, &p.name, &env.set_dir(set).join(&p.name).to_string_lossy())?;
+        Some(id) => {
+            if park::is_paused(env, set) {
+                notes.extend(resume(env, rex, set)?);
             }
+            id
+        }
+        None => {
+            let (windows, active) = match park::load(env, set) {
+                Some(snapshot) => park::restore(snapshot, &manifest, env),
+                None => (park::fresh(&manifest, env), 0),
+            };
+            let id = rex.create(&session_label(set), &windows, active)?;
+            park::forget(env, set);
+            let _ = park::mark_paused(env, set, false);
             id
         }
     };
     // No app attached (headless, or several): the session is still created.
-    Ok(match rex.select(&id) {
-        Ok(()) => vec![format!("opened {set}")],
-        Err(e) => vec![format!("opened {id}; could not switch: {e}")],
-    })
+    notes.push(match rex.select(&id) {
+        Ok(()) => format!("opened {set}"),
+        Err(e) => format!("opened {id}; could not switch: {e}"),
+    });
+    Ok(notes)
+}
+
+fn require_session(rex: &Rex, set: &str) -> Result<String> {
+    rex.find(&session_label(set)).ok_or_else(|| anyhow!("{set} has no open session"))
+}
+
+/// Save the session's layout and end it, freeing every process; `open` brings it back.
+pub fn close(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
+    let id = require_session(rex, set)?;
+    let (windows, active) = rex.capture(&id, &env.set_dir(set).to_string_lossy())?;
+    let projects = env.load(set)?.projects.into_iter().map(|p| p.name).collect();
+    park::save(env, set, &Snapshot { projects, active, windows })?;
+    if park::is_paused(env, set) {
+        signal_set(rex, set, "CONT")?;
+        park::mark_paused(env, set, false)?;
+    }
+    rex.kill(&id)?;
+    Ok(vec![format!("closed {set}; open it to bring its tabs back")])
+}
+
+/// Stop every process under the set's panes: no CPU, memory kept, back instantly with `resume`.
+pub fn pause(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
+    require_session(rex, set)?;
+    if park::is_paused(env, set) {
+        return Ok(vec![format!("{set} is already paused")]);
+    }
+    let (count, rss_kb) = signal_set(rex, set, "STOP")?;
+    park::mark_paused(env, set, true)?;
+    Ok(vec![format!("paused {set}: {count} process(es) stopped, {} held in memory", procs::mem(rss_kb))])
+}
+
+pub fn resume(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
+    require_session(rex, set)?;
+    let (count, _) = signal_set(rex, set, "CONT")?;
+    park::mark_paused(env, set, false)?;
+    Ok(vec![format!("resumed {set}: {count} process(es)")])
+}
+
+/// Signal the processes under the set's panes, excluding this program's own; the count signalled and their memory.
+/// Processes that are not ours (the root-owned `login` of each pane) are skipped.
+fn signal_set(rex: &Rex, set: &str, signal: &str) -> Result<(usize, u64)> {
+    let snap = procs::collect(rex, Some(&session_label(set)))?;
+    let done: Vec<_> = snap.rows.iter().map(|r| &r.proc).filter(|p| procs::signal(signal, p.pid).is_ok()).collect();
+    if done.is_empty() && !snap.rows.is_empty() {
+        bail!("could not signal any process of {set}");
+    }
+    Ok((done.len(), procs::Usage::of(done).rss_kb))
 }
 
 /// The set of the session this runs in, when it is a `ws-` session.

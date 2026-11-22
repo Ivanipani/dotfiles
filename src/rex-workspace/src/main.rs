@@ -1,6 +1,7 @@
 mod jj;
 mod manifest;
 mod ops;
+mod park;
 mod procs;
 mod repos;
 mod rex;
@@ -36,8 +37,8 @@ use tui::{Action, Launch};
     after_long_help = "\
 Manager keys (none collide with Rex's ctrl+a, ctrl+h/j/k/l or alt+ chords):
   j/k ↑/↓  move          Enter/o  open        n  new set       a  add repos
-  x  remove projects     D  delete set       /  fuzzy filter  Tab  focus projects
-  r  reload              ?  help             q/Esc  quit
+  x  remove projects     D  delete set       c  close set     p  pause/resume
+  /  fuzzy filter        Tab  focus projects r  reload        ?  help         q/Esc  quit
 Procs keys: j/k move  Tab mark  t stop (SIGTERM)  K force kill  / filter  m/c sort by mem/cpu  r refresh  q quit
 In pickers: Tab marks, Ctrl-F names an extra workspace (version) of the focused repo.
 
@@ -55,6 +56,8 @@ Examples:
   rex-workspace new feat-x api web    Create a set from two repos and open it
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
   rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
+  rex-workspace close feat-x          End the session, freeing everything; open brings its tabs back
+  rex-workspace pause feat-x          Stop its processes (no CPU, memory kept); resume or open continues
   rex-workspace delete feat-x -y      Delete without asking"
 )]
 struct Cli {
@@ -74,7 +77,7 @@ enum Command {
         /// Set to focus (default: this session's set)
         set: Option<String>,
         /// Start by prompting for this action
-        #[arg(long, value_parser = ["open", "new", "add", "remove", "delete"])]
+        #[arg(long, value_parser = ["open", "new", "add", "remove", "delete", "close", "pause"])]
         action: Option<String>,
     },
     /// Browse the processes under your Rex panes, with memory and CPU, and stop them.
@@ -113,6 +116,21 @@ enum Command {
         set: Option<String>,
         /// Projects to remove (default: pick in the manager)
         projects: Vec<String>,
+    },
+    /// Save a set's layout and end its session, freeing every process; `open` restores it.
+    Close {
+        /// Set to close (default: this session's set)
+        set: Option<String>,
+    },
+    /// Stop every process in a set's session: no CPU, memory kept.
+    Pause {
+        /// Set to pause (default: this session's set)
+        set: Option<String>,
+    },
+    /// Continue a paused set's processes without switching to it.
+    Resume {
+        /// Set to resume (default: this session's set)
+        set: Option<String>,
     },
     /// Delete a set; uncommitted work is kept under saved-<set> bookmarks.
     Delete {
@@ -166,6 +184,8 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
                 "new" => Action::New,
                 "add" => Action::Add,
                 "remove" => Action::Remove,
+                "close" => Action::Close,
+                "pause" => Action::Pause,
                 _ => Action::Delete,
             });
             manager(env, rex, Launch { select: set, action, new_name: None })
@@ -197,6 +217,9 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             (Some(set), false) => Ok(print_notes(ops::remove(&env, &rex, &set, &projects)?)),
             (None, false) => ops::require_current_set(&rex).map(drop),
         },
+        Command::Close { set } => Ok(print_notes(ops::close(&env, &rex, &named_or_current(&rex, set)?)?)),
+        Command::Pause { set } => Ok(print_notes(ops::pause(&env, &rex, &named_or_current(&rex, set)?)?)),
+        Command::Resume { set } => Ok(print_notes(ops::resume(&env, &rex, &named_or_current(&rex, set)?)?)),
         Command::Delete { set, yes } => {
             let Some(set) = set.or_else(|| ops::current_set(&rex)) else {
                 return manager(env, rex, Launch { action: Some(Action::Delete), ..Launch::default() });
@@ -210,6 +233,10 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             Ok(print_notes(ops::delete(&env, &rex, &set)?))
         }
     }
+}
+
+fn named_or_current(rex: &Rex, set: Option<String>) -> Result<String> {
+    set.map_or_else(|| ops::require_current_set(rex), Ok)
 }
 
 fn confirm(prompt: &str) -> bool {
@@ -226,6 +253,8 @@ struct Listing {
     set: String,
     projects: Vec<manifest::Project>,
     open: bool,
+    /// open, paused, closed (layout saved, no session) or empty.
+    state: &'static str,
     session_id: Option<String>,
     tabs: Option<usize>,
 }
@@ -235,7 +264,11 @@ impl Tabular for Listing {
 
     fn row(&self) -> Vec<Cell> {
         let names: Vec<_> = self.projects.iter().map(|p| p.name.as_str()).collect();
-        let open = if self.open { table::ok("open") } else { table::optional(None::<&str>) };
+        let open = match self.state {
+            "open" => table::ok("open"),
+            "" => table::optional(None::<&str>),
+            other => table::dim(other),
+        };
         vec![Cell::new(&self.set), Cell::new(names.join(" ")), open, table::optional(self.tabs)]
     }
 }
@@ -250,6 +283,7 @@ fn list(env: &Env, rex: &Rex, format: Format) -> Result<()> {
             Listing {
                 tabs: session.and_then(|s| rex.tab_count(&s.id)),
                 open: session.is_some(),
+                state: park::state(env, &m.name, session.is_some()).label(),
                 session_id: session.map(|s| s.id.clone()),
                 set: m.name,
                 projects: m.projects,

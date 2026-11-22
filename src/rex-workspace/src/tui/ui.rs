@@ -1,6 +1,7 @@
 //! Rendering: a sets table over a projects table, a fuzzy filter box, and modals, in claw's style.
 
 use super::app::{tilde, App, Focus, Input, Modal, Mode, Pick, ProjectRow, SetRow};
+use crate::park::State;
 use claw::style::{self, glyph, Theme};
 use claw::widgets::{highlight, hints, modal, pane, popup, status, steps};
 use ratatui::{
@@ -78,11 +79,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 }
 
 fn render_title(frame: &mut Frame, app: &App, area: Rect) {
-    let open = app.sets.iter().filter(|s| s.session.is_some()).count();
-    let line = Line::from(vec![
-        Span::styled(" rex-workspace", style::heading()),
-        Span::styled(format!("   {} sets · {open} open", app.sets.len()), style::muted()),
-    ]);
+    let mut summary = format!("   {} sets", app.sets.len());
+    for state in [State::Open, State::Paused, State::Closed] {
+        let n = app.sets.iter().filter(|s| s.state == state).count();
+        if n > 0 || state == State::Open {
+            summary += &format!(" · {n} {}", state.label());
+        }
+    }
+    let line = Line::from(vec![Span::styled(" rex-workspace", style::heading()), Span::styled(summary, style::muted())]);
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -116,10 +120,11 @@ fn render_sets(frame: &mut Frame, app: &mut App, area: Rect) {
 fn set_row(set: &SetRow, indices: &[u32]) -> Row<'static> {
     let name_len = set.name.chars().count() as u32;
     let name_hits: Vec<_> = indices.iter().copied().filter(|&i| i < name_len).collect();
-    let session = if set.session.is_some() {
-        Cell::from(format!("{} open", glyph::OPEN)).style(style::ok())
-    } else {
-        placeholder()
+    let session = match set.state {
+        State::Open => Cell::from(format!("{} open", glyph::OPEN)).style(style::ok()),
+        State::Paused => Cell::from(format!("{} paused", glyph::OPEN)).style(style::warn()),
+        State::Closed => Cell::from("closed").style(style::muted()),
+        State::Idle => placeholder(),
     };
     let tabs = match (set.session.is_some(), set.tabs) {
         (true, Some(n)) => Cell::from(n.to_string()),
@@ -212,6 +217,8 @@ fn key_hints(app: &App) -> &'static [(&'static str, &'static str)] {
             ("a", "add"),
             ("x", "remove"),
             ("D", "delete"),
+            ("c", "close"),
+            ("p", "pause"),
             ("/", "filter"),
             ("Tab", "focus"),
             ("r", "reload"),
@@ -289,6 +296,8 @@ const HELP: &[(&str, &str)] = &[
     ("a", "add repositories to the set"),
     ("x", "remove projects (the highlighted one when focused)"),
     ("D", "delete the set (asks first)"),
+    ("c", "close: end the session, freeing everything; open restores its tabs"),
+    ("p", "pause / resume: stop its processes (no CPU, memory kept)"),
     ("/", "fuzzy-filter sets by name or project"),
     ("Tab", "focus sets / projects"),
     ("r", "reload"),
@@ -360,6 +369,24 @@ mod tests {
         let text = drawn(&mut app, 120, 30);
         // THEN
         assert!(text.contains("1 Name › 2 Repositories"));
+    }
+
+    #[test]
+    fn render_shows_a_closed_set_as_closed() {
+        // GIVEN
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app_with(tmp.path(), &[("edifice", &["console"])]);
+        app.sets[0].state = State::Closed;
+        // WHEN / THEN
+        assert!(drawn(&mut app, 120, 30).contains("closed"));
+    }
+
+    #[test]
+    fn render_shows_a_paused_set_as_paused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app_with(tmp.path(), &[("edifice", &["console"])]);
+        app.sets[0].state = State::Paused;
+        assert!(drawn(&mut app, 120, 30).contains("paused"));
     }
 
     #[test]

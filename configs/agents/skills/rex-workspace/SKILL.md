@@ -1,6 +1,6 @@
 ---
 name: rex-workspace
-description: Create, open, edit, and delete workspace sets (jj workspaces across repos, one Rex session per set) with the rex-workspace CLI.
+description: Create, open, edit, close, pause, and delete workspace sets (jj workspaces across repos, one Rex session per set) with the rex-workspace CLI.
 ---
 
 # rex-workspace
@@ -14,18 +14,20 @@ Opening a set creates session `ws-<set>`: a tab at the set root, then one tab pe
 Pass names explicitly when scripting. Missing arguments open the TUI (needs a TTY), so an agent without a terminal must always name them.
 
 - `rex-workspace`: the full-screen manager.
-- `rex-workspace ls [--json]`: sets, projects, whether a session is open, and its tab count.
+- `rex-workspace ls [--json]`: sets, projects, session state (`open`, `paused`, `closed`, or none), and tab count.
 - `rex-workspace new SET [REPO...]`: create the set from repos found under `~/github` and `~`, then open it.
-- `rex-workspace open [SET]`: create the session, or switch to it if open.
+- `rex-workspace open [SET]`: create the session, or switch to it if open (resuming it if paused). A closed set comes back with its saved tabs, splits and pane directories.
+- `rex-workspace close [SET]`: save the session's layout to `<set>/.session.json` and kill the session, freeing all its processes. The set stays on disk. Floating layers are not saved; a pane started with a command (nvim) re-runs it, and any other pane comes back as a shell in its last directory.
+- `rex-workspace pause [SET]` / `resume [SET]`: SIGSTOP / SIGCONT every process under the set's panes. A paused set uses no CPU but keeps its memory.
 - `rex-workspace add [SET] [REPO...]` / `remove [SET] [PROJECT...]`: change membership; an open session gains or loses the tab.
 - `rex-workspace delete [SET] --yes`: bookmark any uncommitted work as `saved-<set>`, forget the workspaces, delete the directory and kill the session.
 - `rex-workspace tui [SET] --action open|new|add|remove|delete`: the manager, starting on an action.
 
-`SET` defaults to the current `ws-` session. `remove` and `delete` are destructive: confirm the target with the user first.
+`SET` defaults to the current `ws-` session. `remove` and `delete` are destructive: confirm the target with the user first. `close` ends every program in the session (unsaved editor buffers, running agents), so confirm it too.
 
 ## Manager keys
 
-Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `Enter` open, `n` new, `a` add repos, `x` remove projects, `D` delete (asks first), `/` fuzzy filter (matches set and project names), `Tab` focus projects, `r` reload, `?` help, `q` quit. Pickers filter as you type; `Tab` marks, `Enter` accepts.
+Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `Enter` open, `n` new, `a` add repos, `x` remove projects, `D` delete (asks first), `c` close (asks first), `p` pause / resume, `/` fuzzy filter (matches set and project names), `Tab` focus projects, `r` reload, `?` help, `q` quit. Pickers filter as you type; `Tab` marks, `Enter` accepts.
 
 ## Rex keys
 

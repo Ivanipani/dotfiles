@@ -190,7 +190,14 @@ pub fn collect(rex: &Rex, session: Option<&str>) -> Result<Snapshot> {
     Ok(Snapshot { rows: build_rows(&procs, &roots, &exclude), all: Usage::of(&procs), host: read_host() })
 }
 
-/// Send `signal` (`TERM`, `KILL`) to `pid`.
+/// The full command line of `pid`.
+pub fn args_of(pid: u32) -> Option<String> {
+    let out = Command::new("ps").args(["-o", "args=", "-p", &pid.to_string()]).output().ok()?;
+    let args = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !args.is_empty()).then_some(args)
+}
+
+/// Send `signal` (`TERM`, `KILL`, `STOP`, `CONT`) to `pid`.
 pub fn signal(signal: &str, pid: u32) -> Result<()> {
     let out = Command::new("kill").arg(format!("-{signal}")).arg(pid.to_string()).output()?;
     if !out.status.success() {
