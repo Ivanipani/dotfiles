@@ -73,6 +73,14 @@ impl Env {
         self.workspaces_dir.join(set)
     }
 
+    /// The set whose directory holds `path`.
+    pub fn set_at(&self, path: &std::path::Path) -> Option<String> {
+        let root = self.workspaces_dir.canonicalize().ok()?;
+        let path = path.canonicalize().ok()?;
+        let set = path.strip_prefix(&root).ok()?.components().next()?.as_os_str().to_string_lossy().into_owned();
+        self.exists(&set).then_some(set)
+    }
+
     /// A set exists once it has a manifest; a bare directory is debris from a failed create.
     pub fn exists(&self, set: &str) -> bool {
         self.set_dir(set).join("workspace.yaml").exists()
@@ -142,9 +150,12 @@ pub fn agents_md(m: &Manifest) -> String {
     let projects: String = m
         .projects
         .iter()
-        .map(|p| match &p.source {
-            Some(s) => format!("- `{}/` — from `{s}`\n", p.name),
-            None => format!("- `{}/`\n", p.name),
+        .map(|p| {
+            let prefix = crate::jj::agent_prefix(&p.workspace_name(&m.name));
+            match &p.source {
+                Some(s) => format!("- `{}/` — from `{s}`; your bookmarks: `{prefix}…`\n", p.name),
+                None => format!("- `{}/` — your bookmarks: `{prefix}…`\n", p.name),
+            }
         })
         .collect();
     let name = &m.name;
@@ -166,6 +177,14 @@ Each subdirectory below is a [jujutsu]\\(https://jj-vcs.github.io/jj/) workspace
 - Each workspace has its own working-copy commit \\(`@`); changes are committed to the shared repository as soon as `jj` runs. Describe them with `jj describe`.
 - Do not run `jj workspace forget` or delete project directories. Membership is managed through the tool and `workspace.yaml`.
 - Do not touch the source repositories directly.
+
+## Working alongside other agents
+
+Other agents work in parallel on the same repositories, some on other machines. The git remote is the only place all of you share.
+
+- Name and push only bookmarks under your own prefix, listed per project above. `jj git push -c <change>` names one for you.
+- Other agents' bookmarks and working copies are immutable here. If jj refuses to rewrite a commit for that reason, build on top of it or leave it alone; do not work around it.
+- Before you finish, nothing of yours should exist only on this machine. `rex-workspace stranded` lists what is unpushed: push it, or `jj abandon` what is not worth keeping.
 "
     )
 }
@@ -344,5 +363,26 @@ mod tests {
         env(tmp.path()).save(&m).unwrap();
         // THEN
         assert_eq!(env(tmp.path()).load("demo").unwrap(), m);
+    }
+
+    #[test]
+    fn set_at_a_path_inside_a_project_is_its_set() {
+        // GIVEN
+        let tmp = tempfile::tempdir().unwrap();
+        env(tmp.path()).save(&manifest(&["alpha"])).unwrap();
+        std::fs::create_dir_all(tmp.path().join("demo/alpha/src")).unwrap();
+        // WHEN / THEN
+        assert_eq!(env(tmp.path()).set_at(&tmp.path().join("demo/alpha/src")).as_deref(), Some("demo"));
+    }
+
+    #[test]
+    fn set_at_a_path_outside_the_workspaces_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(env(tmp.path()).set_at(&std::env::temp_dir()), None);
+    }
+
+    #[test]
+    fn agents_md_names_each_projects_bookmark_prefix() {
+        assert!(agents_md(&manifest(&["alpha"])).contains("your bookmarks: `agent/demo/…`"));
     }
 }

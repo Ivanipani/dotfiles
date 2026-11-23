@@ -1,10 +1,11 @@
 //! Set lifecycle: shared by the CLI and the TUI. Each operation returns notes to show the user.
 
-use crate::manifest::{session_label, validate_name, Env, Project};
+use crate::manifest::{session_label, validate_name, Env, Manifest, Project};
 use crate::park::{self, Snapshot};
 use crate::rex::{project_window, Rex};
 use crate::{jj, procs, repos};
 use anyhow::{anyhow, bail, Result};
+use serde::Serialize;
 
 /// Resolve names to repositories under the roots; `repo:feature` names an extra workspace of `repo`.
 /// Unknown names, and names already in the set, are an error.
@@ -72,7 +73,8 @@ pub fn remove(env: &Env, rex: &Rex, set: &str, names: &[String]) -> Result<Vec<S
     let mut notes = vec![];
     for name in names {
         let dir = env.set_dir(set).join(name);
-        notes.extend(jj::forget(&dir)?);
+        let ws = manifest.projects.iter().find(|p| &p.name == name).map(|p| p.workspace_name(set)).unwrap_or_default();
+        notes.extend(jj::forget(&dir, &ws)?);
         let _ = std::fs::remove_dir_all(&dir);
         if let Some(session) = &session {
             rex.close_window(session, name)?;
@@ -84,7 +86,7 @@ pub fn remove(env: &Env, rex: &Rex, set: &str, names: &[String]) -> Result<Vec<S
     Ok(notes)
 }
 
-/// Save dirty workspaces under bookmarks, forget them, remove the directory and the session.
+/// Push stranded work under agent bookmarks, forget the workspaces, remove the directory and the session.
 /// The session is killed last but even when cleanup fails or the directory is already gone.
 pub fn delete(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     let session = rex.find(&session_label(set));
@@ -114,11 +116,14 @@ fn remove_set_dir(env: &Env, set: &str) -> Result<Vec<String>> {
     if !dir.exists() {
         bail!("no set named {set}");
     }
+    let manifest = env.load(set)?;
     let mut notes = vec![];
     let mut projects: Vec<_> = std::fs::read_dir(&dir)?.flatten().filter(|e| e.path().is_dir()).collect();
     projects.sort_by_key(|e| e.file_name());
     for project in projects {
-        notes.extend(jj::forget(&project.path())?);
+        let name = project.file_name().to_string_lossy().into_owned();
+        let ws = manifest.projects.iter().find(|p| p.name == name).map_or_else(|| set.to_string(), |p| p.workspace_name(set));
+        notes.extend(jj::forget(&project.path(), &ws)?);
     }
     std::fs::remove_dir_all(&dir)?;
     Ok(notes)
@@ -131,7 +136,7 @@ pub fn open(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
-    let mut notes = vec![];
+    let mut notes = scope_to_agents(env, &manifest);
     let id = match rex.find(&session_label(set)) {
         Some(id) => {
             if park::is_paused(env, set) {
@@ -173,7 +178,9 @@ pub fn close(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
         park::mark_paused(env, set, false)?;
     }
     rex.kill(&id)?;
-    Ok(vec![format!("closed {set}; open it to bring its tabs back")])
+    let mut notes = vec![format!("closed {set}; open it to bring its tabs back")];
+    notes.extend(stranded_note(env, set));
+    Ok(notes)
 }
 
 /// Stop every process under the set's panes: no CPU, memory kept, back instantly with `resume`.
@@ -264,6 +271,7 @@ pub fn sync(env: &Env, set: &str) -> Result<Vec<SyncReport>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
+    scope_to_agents(env, &manifest);
     let mut repos: Vec<(String, Vec<String>)> = vec![];
     for p in manifest.projects {
         let key = p.source.clone().unwrap_or_else(|| p.name.clone());
@@ -296,13 +304,138 @@ pub fn sync(env: &Env, set: &str) -> Result<Vec<SyncReport>> {
     Ok(reports)
 }
 
-/// The set of the session this runs in, when it is a `ws-` session.
-pub fn current_set(rex: &Rex) -> Option<String> {
-    rex.current_label()?.strip_prefix("ws-").map(String::from)
+/// The set this runs in: the one the working directory is inside, else that of the `ws-` session.
+pub fn current_set(env: &Env, rex: &Rex) -> Option<String> {
+    let here = std::env::current_dir().ok().and_then(|d| env.set_at(&d));
+    here.or_else(|| rex.current_label()?.strip_prefix("ws-").map(String::from))
 }
 
-pub fn require_current_set(rex: &Rex) -> Result<String> {
-    current_set(rex).ok_or_else(|| anyhow!("no set given and not inside a ws- session"))
+pub fn require_current_set(env: &Env, rex: &Rex) -> Result<String> {
+    current_set(env, rex).ok_or_else(|| anyhow!("no set given, and neither inside a set's directory nor a ws- session"))
+}
+
+/// Backfill the per-agent jj config into workspaces created before it existed; failures are notes.
+fn scope_to_agents(env: &Env, manifest: &Manifest) -> Vec<String> {
+    manifest
+        .projects
+        .iter()
+        .filter_map(|p| {
+            let dir = env.set_dir(&manifest.name).join(&p.name);
+            jj::scope_to_agent(&dir, &p.workspace_name(&manifest.name)).err().map(|e| format!("{}: {e:#}", p.name))
+        })
+        .collect()
+}
+
+/// A stranded head of one of the set's projects.
+#[derive(Debug, Serialize)]
+pub struct StrandedRow {
+    pub project: String,
+    #[serde(flatten)]
+    pub head: jj::Stranded,
+}
+
+/// Work in the set's workspaces that no remote holds. Projects without a remote are left out: there
+/// is nowhere to push them.
+pub fn stranded(env: &Env, set: &str) -> Result<Vec<StrandedRow>> {
+    let manifest = env.load(set)?;
+    if manifest.projects.is_empty() {
+        bail!("no set named {set}");
+    }
+    let mut rows = vec![];
+    for p in manifest.projects {
+        let dir = env.set_dir(set).join(&p.name);
+        if !jj::has_remote(&dir)? {
+            continue;
+        }
+        rows.extend(jj::stranded(&dir)?.into_iter().map(|head| StrandedRow { project: p.name.clone(), head }));
+    }
+    Ok(rows)
+}
+
+fn stranded_note(env: &Env, set: &str) -> Option<String> {
+    let commits: usize = stranded(env, set).ok()?.iter().map(|r| r.head.commits).sum();
+    (commits > 0).then(|| format!("{commits} commit(s) exist only on this machine; see rex-workspace stranded {set}"))
+}
+
+/// Why a leftover is still around.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Leftover {
+    /// On trunk already: safe to delete.
+    Landed,
+    /// Its workspace is a set on this machine, or it changed recently.
+    Active,
+    /// No local set owns it and it has not changed in a while.
+    Stale,
+    /// A head nothing points at.
+    Orphan,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReapRow {
+    pub repo: String,
+    pub state: Leftover,
+    pub bookmark: Option<String>,
+    pub change: String,
+    pub description: String,
+    pub age_days: i64,
+}
+
+/// The workspace an `agent/<ws>/…` bookmark belongs to.
+fn bookmark_owner(bookmark: &str) -> Option<&str> {
+    bookmark.strip_prefix("agent/")?.split('/').next()
+}
+
+fn classify(l: &jj::Leftover, local: &[String], now: i64, stale_days: i64) -> Leftover {
+    let Some(bookmark) = &l.bookmark else { return Leftover::Orphan };
+    if l.landed {
+        return Leftover::Landed;
+    }
+    let owned = bookmark_owner(bookmark).is_some_and(|ws| local.iter().any(|w| w == ws));
+    if owned || now - l.committed < stale_days * 86_400 {
+        Leftover::Active
+    } else {
+        Leftover::Stale
+    }
+}
+
+/// Agent bookmarks and orphaned heads in every repository of every set, fetched first. `prune`
+/// deletes the landed bookmarks; nothing else is ever deleted.
+pub fn reap(env: &Env, stale_days: i64, prune: bool) -> Result<(Vec<ReapRow>, Vec<String>)> {
+    let sets = env.sets();
+    let local: Vec<String> = sets.iter().flat_map(|m| m.projects.iter().map(|p| p.workspace_name(&m.name))).collect();
+    // One workspace per repository; querying it leaves the source checkout alone.
+    let mut repos: Vec<(String, std::path::PathBuf)> = vec![];
+    for m in &sets {
+        for p in &m.projects {
+            let key = p.source.clone().unwrap_or_else(|| p.name.clone());
+            if !repos.iter().any(|(k, _)| *k == key) {
+                repos.push((key, env.set_dir(&m.name).join(&p.name)));
+            }
+        }
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let (mut rows, mut notes) = (vec![], vec![]);
+    for (source, dir) in repos {
+        let repo = std::path::Path::new(&source).file_name().map_or(source.clone(), |n| n.to_string_lossy().into_owned());
+        if let Err(e) = jj::fetch(&dir) {
+            notes.push(format!("{repo}: fetch failed, using what was fetched before: {e:#}"));
+        }
+        for l in jj::leftovers(&dir)? {
+            let state = classify(&l, &local, now, stale_days);
+            if prune && state == Leftover::Landed {
+                let name = l.bookmark.as_deref().unwrap_or_default();
+                match jj::delete_bookmark(&dir, name, &l.remotes) {
+                    Ok(()) => notes.push(format!("{repo}: deleted landed {name}")),
+                    Err(e) => notes.push(format!("{repo}: could not delete {name}: {e:#}")),
+                }
+                continue;
+            }
+            let age_days = (now - l.committed).max(0) / 86_400;
+            rows.push(ReapRow { repo: repo.clone(), state, bookmark: l.bookmark, change: l.change, description: l.description, age_days });
+        }
+    }
+    Ok((rows, notes))
 }
 
 #[cfg(test)]
@@ -400,13 +533,17 @@ mod tests {
         assert!(describe(&env, "nope", Some("x"), &[], false).is_err());
     }
 
+    /// Run jj in `dir` with a neutral config; its stdout.
+    fn run(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("jj").args(args).current_dir(dir).env("JJ_CONFIG", "/dev/null")
+            .env("JJ_USER", "t").env("JJ_EMAIL", "t@t").output().unwrap();
+        assert!(out.status.success(), "jj {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
     /// A set `demo` with one project `api`, a workspace of a fresh repo whose trunk is `main@origin`.
-    fn synced_set(tmp: &Path, env: &Env) -> PathBuf {
-        let run = |dir: &Path, args: &[&str]| {
-            let out = std::process::Command::new("jj").args(args).current_dir(dir).env("JJ_CONFIG", "/dev/null")
-                .env("JJ_USER", "t").env("JJ_EMAIL", "t@t").output().unwrap();
-            assert!(out.status.success(), "jj {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-        };
+    /// Returns the source repository.
+    fn remote_set(tmp: &Path, env: &Env) -> PathBuf {
         let (origin, src) = (tmp.join("origin.git"), tmp.join("src/api"));
         std::fs::create_dir_all(&src).unwrap();
         assert!(std::process::Command::new("git").args(["init", "-q", "--bare"]).arg(&origin).status().unwrap().success());
@@ -417,7 +554,12 @@ mod tests {
         run(&src, &["git", "push", "-b", "main"]);
         let pick = Project { name: "api".into(), source: Some(src.to_string_lossy().into()), feature: None };
         add(env, &Rex::locate(), "demo", &[pick]).unwrap();
-        // Trunk moves on in the source.
+        src
+    }
+
+    /// `remote_set`, then trunk moves on in the source.
+    fn synced_set(tmp: &Path, env: &Env) -> PathBuf {
+        let src = remote_set(tmp, env);
         run(&src, &["new", "main", "-m", "upstream"]);
         run(&src, &["bookmark", "set", "main", "-r", "@"]);
         run(&src, &["git", "push", "-b", "main"]);
@@ -486,5 +628,223 @@ mod tests {
         let _ = add(&env, &Rex::locate(), "demo", &[bad]);
         // THEN a retry of the same name is not blocked
         assert!(!env.set_dir("demo").exists());
+    }
+
+    /// Commit a file in `dir` as `message`, leaving an empty `@` on top.
+    fn commit(dir: &Path, file: &str, message: &str) {
+        std::fs::write(dir.join(file), message).unwrap();
+        run(dir, &["commit", "-m", message]);
+    }
+
+    fn remote_bookmarks(src: &Path) -> String {
+        run(src, &["git", "fetch"]);
+        run(src, &["bookmark", "list", "--all-remotes", "-T", r#"if(remote, name ++ "@" ++ remote ++ "\n")"#])
+    }
+
+    fn api(env: &Env) -> PathBuf {
+        env.set_dir("demo").join("api")
+    }
+
+    #[test]
+    fn add_makes_another_workspaces_working_copy_immutable() {
+        // GIVEN a set workspace and the source's own working copy
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        // WHEN the agent tries to rewrite the source's @
+        let out = std::process::Command::new("jj").args(["describe", "-r", "default@", "-m", "x"]).current_dir(api(&env)).output().unwrap();
+        // THEN
+        assert!(String::from_utf8_lossy(&out.stderr).contains("immutable"));
+    }
+
+    #[test]
+    fn add_makes_another_agents_bookmark_immutable() {
+        // GIVEN another agent's bookmark in the shared repository
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&src, "theirs", "their work");
+        run(&src, &["bookmark", "create", "agent/other/x", "-r", "@-"]);
+        // WHEN
+        let out = std::process::Command::new("jj").args(["describe", "-r", "agent/other/x", "-m", "mine now"]).current_dir(api(&env)).output().unwrap();
+        // THEN
+        assert!(String::from_utf8_lossy(&out.stderr).contains("immutable"));
+    }
+
+    #[test]
+    fn push_of_a_change_names_the_bookmark_under_the_workspace_prefix() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        // WHEN
+        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains("agent/demo/"));
+    }
+
+    #[test]
+    fn stranded_lists_an_unpushed_commit() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        // WHEN
+        let rows = stranded(&env, "demo").unwrap();
+        // THEN
+        assert_eq!(rows.iter().map(|r| r.head.description.as_str()).collect::<Vec<_>>(), ["feature"]);
+    }
+
+    #[test]
+    fn stranded_counts_every_commit_under_the_head() {
+        // GIVEN two unpushed commits
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "one");
+        commit(&api(&env), "b", "two");
+        // WHEN
+        let rows = stranded(&env, "demo").unwrap();
+        // THEN
+        assert_eq!(rows[0].head.commits, 2);
+    }
+
+    #[test]
+    fn stranded_after_a_push_is_empty() {
+        // GIVEN a pushed commit
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        // WHEN / THEN
+        assert!(stranded(&env, "demo").unwrap().is_empty());
+    }
+
+    #[test]
+    fn stranded_without_a_remote_leaves_the_project_out() {
+        // GIVEN a repo with no remote and a commit in its workspace
+        let (tmp, env) = env_with_repos(&[]);
+        let src = tmp.path().join("src/api");
+        std::fs::create_dir_all(&src).unwrap();
+        run(&src, &["git", "init"]);
+        let pick = Project { name: "api".into(), source: Some(src.to_string_lossy().into()), feature: None };
+        add(&env, &Rex::locate(), "demo", &[pick]).unwrap();
+        commit(&api(&env), "a", "local only");
+        // WHEN / THEN
+        assert!(stranded(&env, "demo").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_pushes_committed_work_under_a_saved_bookmark() {
+        // GIVEN committed work and an empty @, as jj commit leaves it
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        // WHEN
+        delete(&env, &Rex::locate(), "demo").unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains("agent/demo/saved@origin"));
+    }
+
+    #[test]
+    fn delete_pushes_an_undescribed_working_copy() {
+        // GIVEN uncommitted, undescribed changes in @
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        std::fs::write(api(&env).join("wip"), "wip").unwrap();
+        // WHEN
+        delete(&env, &Rex::locate(), "demo").unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains("agent/demo/saved@origin"));
+    }
+
+    #[test]
+    fn delete_pushes_work_on_its_own_bookmark_under_that_name() {
+        // GIVEN work on the agent's own unpushed bookmark
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        run(&api(&env), &["bookmark", "create", "agent/demo/feature", "-r", "@-"]);
+        // WHEN
+        delete(&env, &Rex::locate(), "demo").unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains("agent/demo/feature@origin"));
+    }
+
+    #[test]
+    fn reap_reports_a_bookmark_already_on_trunk_as_landed() {
+        // GIVEN an agent bookmark that main has since reached
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        run(&src, &["git", "fetch"]);
+        run(&src, &["bookmark", "set", "main", "-r", r#"description(substring:"feature")"#]);
+        run(&src, &["git", "push", "-b", "main"]);
+        // WHEN
+        let (rows, _) = reap(&env, 14, false).unwrap();
+        // THEN
+        assert_eq!(rows.iter().map(|r| r.state).collect::<Vec<_>>(), [Leftover::Landed]);
+    }
+
+    #[test]
+    fn reap_with_prune_deletes_a_landed_bookmark_from_the_remote() {
+        // GIVEN a landed agent bookmark
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        run(&src, &["git", "fetch"]);
+        run(&src, &["bookmark", "set", "main", "-r", r#"description(substring:"feature")"#]);
+        run(&src, &["git", "push", "-b", "main"]);
+        // WHEN
+        reap(&env, 14, true).unwrap();
+        // THEN
+        assert!(!remote_bookmarks(&src).contains("agent/"));
+    }
+
+    #[test]
+    fn reap_reports_a_head_nothing_points_at_as_an_orphan() {
+        // GIVEN work the agent walked away from with jj new
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "abandoned path");
+        run(&api(&env), &["new", "main"]);
+        // WHEN
+        let (rows, _) = reap(&env, 14, false).unwrap();
+        // THEN
+        assert_eq!(rows.iter().map(|r| r.state).collect::<Vec<_>>(), [Leftover::Orphan]);
+    }
+
+    fn leftover(bookmark: Option<&str>, landed: bool, committed: i64) -> jj::Leftover {
+        jj::Leftover { bookmark: bookmark.map(String::from), remotes: vec![], change: "c".into(), description: String::new(), landed, committed }
+    }
+
+    #[test]
+    fn classify_an_old_bookmark_of_a_local_set_as_active() {
+        let l = leftover(Some("agent/demo/x"), false, 0);
+        assert_eq!(classify(&l, &["demo".into()], 100 * 86_400, 14), Leftover::Active);
+    }
+
+    #[test]
+    fn classify_an_old_bookmark_no_local_set_owns_as_stale() {
+        let l = leftover(Some("agent/gone/x"), false, 0);
+        assert_eq!(classify(&l, &["demo".into()], 100 * 86_400, 14), Leftover::Stale);
+    }
+
+    #[test]
+    fn classify_a_recent_bookmark_no_local_set_owns_as_active() {
+        // GIVEN a bookmark pushed a day ago from another machine
+        let l = leftover(Some("agent/remote/x"), false, 99 * 86_400);
+        // WHEN / THEN
+        assert_eq!(classify(&l, &[], 100 * 86_400, 14), Leftover::Active);
+    }
+
+    #[test]
+    fn classify_a_landed_bookmark_as_landed_even_when_owned() {
+        let l = leftover(Some("agent/demo/x"), true, 0);
+        assert_eq!(classify(&l, &["demo".into()], 0, 14), Leftover::Landed);
+    }
+
+    #[test]
+    fn bookmark_owner_is_the_segment_after_agent() {
+        assert_eq!(bookmark_owner("agent/demo-v2/fix"), Some("demo-v2"));
     }
 }

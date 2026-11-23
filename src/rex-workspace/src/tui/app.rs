@@ -353,7 +353,7 @@ impl App {
     // --- launch -------------------------------------------------------------
 
     pub fn launch(&mut self, launch: Launch) {
-        let target = launch.select.or_else(|| ops::current_set(&self.rex)).filter(|n| self.sets.iter().any(|s| &s.name == n));
+        let target = launch.select.or_else(|| ops::current_set(&self.env, &self.rex)).filter(|n| self.sets.iter().any(|s| &s.name == n));
         if let Some(name) = &target {
             self.refilter(Some(name));
         }

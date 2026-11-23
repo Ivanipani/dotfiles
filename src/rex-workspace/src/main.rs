@@ -65,6 +65,9 @@ Examples:
   rex-workspace describe feat-x       Print the set's goal and links
   rex-workspace describe -m 'New goal'  Change this session's set's goal
   rex-workspace sync feat-x           Fetch, then rebase every project onto trunk()
+  rex-workspace stranded              Work in this set that exists only on this machine
+  rex-workspace reap                  Agent bookmarks (landed, active, stale) and orphaned commits
+  rex-workspace reap --prune          … deleting the landed bookmarks
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
   rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
   rex-workspace close feat-x          End the session, freeing everything; open brings its tabs back
@@ -185,7 +188,31 @@ enum Command {
         #[arg(long)]
         clear_links: bool,
     },
-    /// Delete a set; uncommitted work is kept under saved-<set> bookmarks.
+    /// List work in a set's workspaces that exists only on this machine.
+    ///
+    /// Each row is the tip of a run of commits on the branch of `@` that no remote bookmark holds.
+    /// Push it under the workspace's own prefix with `jj git push -c <change>`, or abandon it.
+    /// Projects without a remote are left out.
+    Stranded {
+        /// Set to check (default: the one this runs in)
+        #[arg(add = ArgValueCandidates::new(set_names))]
+        set: Option<String>,
+    },
+    /// List agent bookmarks and orphaned commits across every set's repositories.
+    ///
+    /// Fetches each repository, then lists every `agent/…` bookmark on a remote as landed (already
+    /// on trunk), active (owned by a set here, or changed recently) or stale, plus orphans: commits
+    /// that no bookmark and no workspace points at. Nothing is deleted unless --prune is given, and
+    /// then only landed bookmarks.
+    Reap {
+        /// Days without change before an unowned bookmark counts as stale
+        #[arg(long, default_value_t = 14)]
+        days: i64,
+        /// Delete landed agent bookmarks, here and on their remotes
+        #[arg(long)]
+        prune: bool,
+    },
+    /// Delete a set; work that exists only here is pushed under agent/<workspace>/saved bookmarks.
     Delete {
         /// Set to delete (default: this session's set)
         #[arg(add = ArgValueCandidates::new(set_names))]
@@ -262,32 +289,43 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             }
             Ok(print_notes(ops::open(&env, &rex, &set)?))
         }
-        Command::Add { set, repos } => match (set.or_else(|| ops::current_set(&rex)), repos.is_empty()) {
+        Command::Add { set, repos } => match (set.or_else(|| ops::current_set(&env, &rex)), repos.is_empty()) {
             (set, true) => manager(env, rex, Launch { select: set, action: Some(Action::Add), ..Launch::default() }),
             (Some(set), false) => {
                 let picks = ops::resolve_repos(&env, &set, &repos)?;
                 Ok(print_notes(ops::add(&env, &rex, &set, &picks)?))
             }
-            (None, false) => ops::require_current_set(&rex).map(drop),
+            (None, false) => ops::require_current_set(&env, &rex).map(drop),
         },
-        Command::Remove { set, projects } => match (set.or_else(|| ops::current_set(&rex)), projects.is_empty()) {
+        Command::Remove { set, projects } => match (set.or_else(|| ops::current_set(&env, &rex)), projects.is_empty()) {
             (set, true) => manager(env, rex, Launch { select: set, action: Some(Action::Remove), ..Launch::default() }),
             (Some(set), false) => Ok(print_notes(ops::remove(&env, &rex, &set, &projects)?)),
-            (None, false) => ops::require_current_set(&rex).map(drop),
+            (None, false) => ops::require_current_set(&env, &rex).map(drop),
         },
-        Command::Close { set } => Ok(print_notes(ops::close(&env, &rex, &named_or_current(&rex, set)?)?)),
-        Command::Pause { set } => Ok(print_notes(ops::pause(&env, &rex, &named_or_current(&rex, set)?)?)),
-        Command::Resume { set } => Ok(print_notes(ops::resume(&env, &rex, &named_or_current(&rex, set)?)?)),
-        Command::Sync { set } => sync(&env, &named_or_current(&rex, set)?),
+        Command::Close { set } => Ok(print_notes(ops::close(&env, &rex, &named_or_current(&env, &rex, set)?)?)),
+        Command::Pause { set } => Ok(print_notes(ops::pause(&env, &rex, &named_or_current(&env, &rex, set)?)?)),
+        Command::Resume { set } => Ok(print_notes(ops::resume(&env, &rex, &named_or_current(&env, &rex, set)?)?)),
+        Command::Sync { set } => sync(&env, &named_or_current(&env, &rex, set)?),
+        Command::Stranded { set } => {
+            let set = named_or_current(&env, &rex, set)?;
+            format.list(&ops::stranded(&env, &set)?, &format!("nothing in {set} exists only on this machine"));
+            Ok(())
+        }
+        Command::Reap { days, prune } => {
+            let (rows, notes) = ops::reap(&env, days, prune)?;
+            print_notes(notes);
+            format.list(&rows, "no agent bookmarks or orphaned commits");
+            Ok(())
+        }
         Command::Describe { set, goal, link, clear_links } => {
-            let set = named_or_current(&rex, set)?;
+            let set = named_or_current(&env, &rex, set)?;
             if goal.is_none() && link.is_empty() && !clear_links {
                 return show_goal(&env, &set, format);
             }
             Ok(print_notes(ops::describe(&env, &set, goal.as_deref(), &link, clear_links)?))
         }
         Command::Delete { set, yes } => {
-            let Some(set) = set.or_else(|| ops::current_set(&rex)) else {
+            let Some(set) = set.or_else(|| ops::current_set(&env, &rex)) else {
                 return manager(env, rex, Launch { action: Some(Action::Delete), ..Launch::default() });
             };
             if !env.exists(&set) {
@@ -365,8 +403,8 @@ fn repo_names() -> Vec<CompletionCandidate> {
         .collect()
 }
 
-fn named_or_current(rex: &Rex, set: Option<String>) -> Result<String> {
-    set.map_or_else(|| ops::require_current_set(rex), Ok)
+fn named_or_current(env: &Env, rex: &Rex, set: Option<String>) -> Result<String> {
+    set.map_or_else(|| ops::require_current_set(env, rex), Ok)
 }
 
 fn confirm(prompt: &str) -> bool {
@@ -375,6 +413,43 @@ fn confirm(prompt: &str) -> bool {
     let mut answer = String::new();
     let _ = std::io::stdin().read_line(&mut answer);
     answer.trim().eq_ignore_ascii_case("y")
+}
+
+impl Tabular for ops::StrandedRow {
+    const COLUMNS: &'static [&'static str] = &["PROJECT", "CHANGE", "COMMITS", "BOOKMARKS", "DESCRIPTION"];
+
+    fn row(&self) -> Vec<Cell> {
+        let h = &self.head;
+        let description = Some(h.description.as_str()).filter(|d| !d.is_empty());
+        vec![
+            Cell::new(&self.project),
+            Cell::new(&h.change),
+            Cell::new(h.commits),
+            table::optional(Some(h.bookmarks.join(" ")).filter(|b| !b.is_empty())),
+            table::optional(description),
+        ]
+    }
+}
+
+impl Tabular for ops::ReapRow {
+    const COLUMNS: &'static [&'static str] = &["REPO", "STATE", "BOOKMARK", "CHANGE", "AGE", "DESCRIPTION"];
+
+    fn row(&self) -> Vec<Cell> {
+        let state = match self.state {
+            ops::Leftover::Landed => table::ok("landed"),
+            ops::Leftover::Active => Cell::new("active"),
+            ops::Leftover::Stale => table::dim("stale"),
+            ops::Leftover::Orphan => table::dim("orphan"),
+        };
+        vec![
+            Cell::new(&self.repo),
+            state,
+            table::optional(self.bookmark.as_deref()),
+            Cell::new(&self.change),
+            Cell::new(format!("{}d", self.age_days)),
+            table::optional(Some(self.description.as_str()).filter(|d| !d.is_empty())),
+        ]
+    }
 }
 
 /// One `ls` row: a set, its projects and its Rex session.
