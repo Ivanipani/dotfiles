@@ -670,15 +670,27 @@ mod tests {
     }
 
     #[test]
-    fn push_of_a_change_names_the_bookmark_after_its_description_under_the_workspace_prefix() {
+    fn push_of_a_change_names_the_bookmark_after_its_subject_without_the_conventional_prefix() {
         // GIVEN
         let (tmp, env) = env_with_repos(&[]);
         let src = remote_set(tmp.path(), &env);
-        commit(&api(&env), "a", "feat(fleet): Show agents' status!");
+        commit(&api(&env), "a", "feat(fleet)!: Show agents' status");
         // WHEN
         jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
         // THEN
-        assert!(remote_bookmarks(&src).contains("agent/demo/feat-fleet-show-agents-status@origin"));
+        assert!(remote_bookmarks(&src).contains("agent/demo/show-agents-status@origin"));
+    }
+
+    #[test]
+    fn push_of_a_long_subject_names_the_bookmark_after_its_first_three_words() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "name pushed agent bookmarks after the change's description");
+        // WHEN
+        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains("agent/demo/name-pushed-agent@origin"));
     }
 
     #[test]

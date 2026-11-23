@@ -45,11 +45,14 @@ fn immutable_heads(ws: &str) -> String {
 pub fn scope_to_agent(dir: &Path, ws: &str) -> Result<()> {
     // TOML literal strings: the values hold double quotes, and names never hold a single quote.
     set_config(dir, r#"revset-aliases."immutable_heads()""#, &format!("'{}'", immutable_heads(ws)))?;
-    set_config(dir, "templates.git_push_bookmark", &format!("'\"{}\" ++ {PUSH_SLUG}'", agent_prefix(ws)))
+    set_config(dir, "templates.git_push_bookmark", &format!("'\"{}\" ++ {}'", agent_prefix(ws), push_slug()))
 }
 
-/// The commit's first line as a bookmark-safe slug, or its change id when it has none.
-const PUSH_SLUG: &str = r#"if(description.first_line().lower().replace(regex:"[^a-z0-9]+", ""), description.first_line().lower().substr(0, 60).replace(regex:"^[^a-z0-9]+|[^a-z0-9]+$", "").replace(regex:"[^a-z0-9]+", "-"), change_id.short())"#;
+/// The first three words of the commit's subject, without a conventional `type(scope):`, or its change id.
+fn push_slug() -> String {
+    let words = r#"description.first_line().lower().replace(regex:"^[a-z]+(\\([^)]*\\))?!?:", "").replace(regex:"[^a-z0-9]+", "-").replace(regex:"^-+", "").replace(regex:"^([a-z0-9]+(-[a-z0-9]+){0,2}).*$", "$1")"#;
+    format!("if({words}, {words}, change_id.short())")
+}
 
 /// Work on the branch of `@` that no remote holds.
 const STRANDED: &str = "((trunk()..@) & mutable() & ~empty()) ~ ::remote_bookmarks()";
