@@ -493,6 +493,7 @@ impl State {
                         name: self.target.clone(),
                         projects: members(&self.config, Self::mount(), &self.target).into_iter()
                             .map(|name| Component { name, source: None }).collect(),
+                        ..Default::default()
                     });
                 self.prepare_workspaces();
                 true
@@ -759,6 +760,7 @@ impl State {
         let mut manifest = Manifest::load(&self.config, Self::mount(), &self.target).unwrap_or_else(|| Manifest {
             name: self.target.clone(),
             projects: self.initial.iter().map(|&i| self.component(&self.repos[i])).collect(),
+            ..Default::default()
         });
         for &i in self.selected.difference(&self.initial) {
             manifest.add(self.component(&self.repos[i]));

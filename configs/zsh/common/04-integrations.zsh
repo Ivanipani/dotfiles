@@ -2,6 +2,7 @@
 # init breaks the Powerlevel10k instant prompt).
 (( $+commands[direnv] )) && eval "$(direnv hook zsh)"
 (( $+commands[just] )) && eval "$(just --completions zsh)"
+(( $+commands[rex-workspace] )) && source <(COMPLETE=zsh rex-workspace)
 (( $+commands[wezterm] )) && eval "$(wezterm shell-completion --shell zsh)"
 (( $+commands[atuin] )) && eval "$(atuin init zsh)"
 

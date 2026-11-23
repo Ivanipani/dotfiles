@@ -4,7 +4,7 @@ mod app;
 pub mod procs;
 mod ui;
 
-pub use app::{Action, Launch};
+pub use app::{tilde, Action, Launch};
 
 use crate::manifest::Env;
 use crate::rex::Rex;

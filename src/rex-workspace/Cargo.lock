@@ -130,6 +130,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a35200383f20018d41c14d1ab19c1727c697f544492143f7d93aa39f0187848"
+dependencies = [
+ "clap",
+ "clap_lex",
+ "is_executable",
+ "shlex",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +438,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
+]
+
+[[package]]
+name = "is_executable"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82cb6a9f675da968c63b6208c641b9dca58fc0133ae53375736b1767b0cab8bd"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]
@@ -786,6 +807,7 @@ dependencies = [
  "anstream",
  "anyhow",
  "clap",
+ "clap_complete",
  "claw",
  "crossterm",
  "ratatui",
@@ -898,6 +920,12 @@ dependencies = [
  "serde",
  "unsafe-libyaml",
 ]
+
+[[package]]
+name = "shlex"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "signal-hook"

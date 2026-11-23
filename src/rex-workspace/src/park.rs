@@ -113,6 +113,7 @@ mod tests {
         Manifest {
             name: "demo".into(),
             projects: names.iter().map(|n| Project { name: (*n).into(), source: None, feature: None }).collect(),
+            ..Manifest::default()
         }
     }
 

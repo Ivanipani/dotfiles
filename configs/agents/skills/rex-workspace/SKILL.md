@@ -20,6 +20,9 @@ Pass names explicitly when scripting. Missing arguments open the TUI (needs a TT
 - `rex-workspace close [SET]`: save the session's layout to `<set>/.session.json` and kill the session, freeing all its processes. The set stays on disk. Floating layers are not saved; a pane started with a command (nvim) re-runs it, and any other pane comes back as a shell in its last directory.
 - `rex-workspace pause [SET]` / `resume [SET]`: SIGSTOP / SIGCONT every process under the set's panes. A paused set uses no CPU but keeps its memory.
 - `rex-workspace add [SET] [REPO...]` / `remove [SET] [PROJECT...]`: change membership; an open session gains or loses the tab.
+- `rex-workspace new SET REPO... -m GOAL [--link URL]...`: also state what the set is for.
+- `rex-workspace describe [SET]` prints the set's goal and links (`--json` for data); `-m GOAL` replaces the goal (empty clears it), `--link URL` appends a link, `--clear-links` drops them. Both go into `workspace.yaml` and a `## Goal` section of the set's `AGENTS.md`.
+- `rex-workspace sync [SET]`: `jj git fetch` once per repository, then `jj rebase -b @ -d 'trunk()'` in every project that is behind trunk. It reports conflicts but does not resolve them, and skips repos with no remote trunk. It exits non-zero when any project fails or has conflicts. The manager shows conflicted projects as `conflict`. A rebase rewrites commits: `jj undo` inside a project reverts it.
 - `rex-workspace delete [SET] --yes`: bookmark any uncommitted work as `saved-<set>`, forget the workspaces, delete the directory and kill the session.
 - `rex-workspace tui [SET] --action open|new|add|remove|delete`: the manager, starting on an action.
 
@@ -27,7 +30,7 @@ Pass names explicitly when scripting. Missing arguments open the TUI (needs a TT
 
 ## Manager keys
 
-Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `Enter` open, `n` new, `a` add repos, `x` remove projects, `D` delete (asks first), `c` close (asks first), `p` pause / resume, `/` fuzzy filter (matches set and project names), `Tab` focus projects, `r` reload, `?` help, `q` quit. Pickers filter as you type; `Tab` marks, `Enter` accepts.
+Chosen to avoid Rex's `ctrl+a`, `ctrl+h/j/k/l` and `alt+` chords. `j/k` move, `Enter` open, `n` new, `a` add repos, `x` remove projects, `D` delete (asks first), `c` close (asks first), `p` pause / resume, `s` sync, `e` edit the goal, `/` fuzzy filter (matches set names, project names and goals), `Tab` focus projects, `r` reload, `?` help, `q` quit. Pickers filter as you type; `Tab` marks, `Enter` accepts.
 
 ## Rex keys
 

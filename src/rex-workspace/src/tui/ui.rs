@@ -156,6 +156,15 @@ fn render_projects(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     };
     let title = format!(" {} · {} project(s) ", set.name, set.projects.len());
+    let area = match set.goal.as_deref() {
+        Some(goal) => {
+            let [line, rest] = Layout::vertical([Constraint::Length(1), Constraint::Min(3)]).areas(area);
+            let text = Line::from(vec![Span::styled(" Goal ", style::heading()), Span::raw(goal.replace('\n', " "))]);
+            frame.render_widget(Paragraph::new(text), line);
+            rest
+        }
+        None => area,
+    };
     let rows: Vec<_> = set.projects.iter().map(project_row).collect();
     let table = Table::new(
         rows,
@@ -185,7 +194,9 @@ fn render_projects(frame: &mut Frame, app: &mut App, area: Rect) {
 fn project_row(p: &ProjectRow) -> Row<'static> {
     let (change, state, bookmark, description) = match (&p.status, p.loaded) {
         (Some(s), _) => {
-            let state = if s.dirty {
+            let state = if s.conflict {
+                Cell::from("conflict").style(style::error())
+            } else if s.dirty {
                 Cell::from(format!("dirty ({})", s.changed_files)).style(style::warn())
             } else {
                 Cell::from("clean").style(style::ok())
@@ -219,6 +230,8 @@ fn key_hints(app: &App) -> &'static [(&'static str, &'static str)] {
             ("D", "delete"),
             ("c", "close"),
             ("p", "pause"),
+            ("s", "sync"),
+            ("e", "goal"),
             ("/", "filter"),
             ("Tab", "focus"),
             ("r", "reload"),
@@ -298,6 +311,8 @@ const HELP: &[(&str, &str)] = &[
     ("D", "delete the set (asks first)"),
     ("c", "close: end the session, freeing everything; open restores its tabs"),
     ("p", "pause / resume: stop its processes (no CPU, memory kept)"),
+    ("s", "sync: fetch, then rebase every project onto trunk()"),
+    ("e", "edit the set's goal, stated in its AGENTS.md"),
     ("/", "fuzzy-filter sets by name or project"),
     ("Tab", "focus sets / projects"),
     ("r", "reload"),
@@ -317,7 +332,7 @@ mod tests {
         let env = Env { workspaces_dir: dir.to_path_buf(), roots: vec![] };
         for (name, projects) in sets {
             let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None, feature: None }).collect();
-            env.save(&Manifest { name: (*name).into(), projects }).unwrap();
+            env.save(&Manifest { name: (*name).into(), projects, ..Manifest::default() }).unwrap();
         }
         std::env::set_var("REX_BIN", "/nonexistent");
         App::new(env, Rex::locate())
@@ -387,6 +402,16 @@ mod tests {
         let mut app = app_with(tmp.path(), &[("edifice", &["console"])]);
         app.sets[0].state = State::Paused;
         assert!(drawn(&mut app, 120, 30).contains("paused"));
+    }
+
+    #[test]
+    fn render_with_a_goal_shows_it_above_the_projects() {
+        // GIVEN
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app_with(tmp.path(), &[("edifice", &["console"])]);
+        app.sets[0].goal = Some("Ship sync".into());
+        // WHEN / THEN
+        assert!(drawn(&mut app, 120, 30).contains("Goal Ship sync"));
     }
 
     #[test]

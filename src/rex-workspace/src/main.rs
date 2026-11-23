@@ -12,7 +12,9 @@ use anyhow::{bail, Result};
 use claw::console;
 use claw::output::{Format, OutputArgs, Tabular};
 use claw::table::{self, Cell};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::engine::{ArgValueCandidates, CompletionCandidate};
+use clap_complete::CompleteEnv;
 use manifest::{session_label, Env};
 use rex::Rex;
 use serde::Serialize;
@@ -38,7 +40,8 @@ use tui::{Action, Launch};
 Manager keys (none collide with Rex's ctrl+a, ctrl+h/j/k/l or alt+ chords):
   j/k ↑/↓  move          Enter/o  open        n  new set       a  add repos
   x  remove projects     D  delete set       c  close set     p  pause/resume
-  /  fuzzy filter        Tab  focus projects r  reload        ?  help         q/Esc  quit
+  s  sync with trunk     e  edit goal        /  fuzzy filter  Tab  focus projects
+  r  reload              ?  help             q/Esc  quit
 Procs keys: j/k move  Tab mark  t stop (SIGTERM)  K force kill  / filter  m/c sort by mem/cpu  r refresh  q quit
 In pickers: Tab marks, Ctrl-F names an extra workspace (version) of the focused repo.
 
@@ -47,6 +50,9 @@ Environment:
   REX_WORKSPACE_ROOTS    colon-separated roots scanned for repos (default ~/github:~)
   REX_BIN                the rex executable to drive
 
+Shell completion (sets and repositories by name), e.g. in ~/.zshrc:
+  source <(COMPLETE=zsh rex-workspace)
+
 Examples:
   rex-workspace                       Open the manager
   rex-workspace procs                 Browse and stop processes under your Rex panes
@@ -54,6 +60,11 @@ Examples:
   rex-workspace ls                    Table of sets, projects and sessions
   rex-workspace ls --json             The same as JSON (automatic when piped)
   rex-workspace new feat-x api web    Create a set from two repos and open it
+  rex-workspace new feat-x api -m 'Add retries to uploads' --link https://…/PR-12
+                                      … stating its goal in the set's AGENTS.md
+  rex-workspace describe feat-x       Print the set's goal and links
+  rex-workspace describe -m 'New goal'  Change this session's set's goal
+  rex-workspace sync feat-x           Fetch, then rebase every project onto trunk()
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
   rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
   rex-workspace close feat-x          End the session, freeing everything; open brings its tabs back
@@ -75,6 +86,7 @@ enum Command {
     /// Open the manager, optionally straight into an action on a set.
     Tui {
         /// Set to focus (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
         /// Start by prompting for this action
         #[arg(long, value_parser = ["open", "new", "add", "remove", "delete", "close", "pause"])]
@@ -92,6 +104,7 @@ enum Command {
     /// Open a set as a Rex session, or switch to it if already open.
     Open {
         /// Set to open (default: pick in the manager)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
     },
     /// Create a set from repositories, then open it.
@@ -100,19 +113,29 @@ enum Command {
         set: String,
         /// Repositories to include, by name; `repo:feature` adds an extra jj workspace of `repo`
         /// (default: pick in the manager)
+        #[arg(add = ArgValueCandidates::new(repo_names))]
         repos: Vec<String>,
+        /// What the set is for, written into its AGENTS.md
+        #[arg(short = 'm', long, requires = "repos")]
+        goal: Option<String>,
+        /// A ticket, PR or doc about the goal (repeatable)
+        #[arg(short, long, requires = "repos")]
+        link: Vec<String>,
     },
     /// Add repositories to a set.
     Add {
         /// Set to change (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
         /// Repositories to add, by name; `repo:feature` adds an extra jj workspace of `repo`
         /// (default: pick in the manager)
+        #[arg(add = ArgValueCandidates::new(repo_names))]
         repos: Vec<String>,
     },
     /// Remove projects from a set.
     Remove {
         /// Set to change (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
         /// Projects to remove (default: pick in the manager)
         projects: Vec<String>,
@@ -120,21 +143,52 @@ enum Command {
     /// Save a set's layout and end its session, freeing every process; `open` restores it.
     Close {
         /// Set to close (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
     },
     /// Stop every process in a set's session: no CPU, memory kept.
     Pause {
         /// Set to pause (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
     },
     /// Continue a paused set's processes without switching to it.
     Resume {
         /// Set to resume (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
+    },
+    /// Fetch each repository, then rebase every project's working copy onto trunk().
+    ///
+    /// The branch of `@` (every commit not yet on trunk) moves onto trunk() when trunk has new
+    /// commits; conflicts are reported, not resolved. A repository without a remote main, master
+    /// or trunk is skipped.
+    Sync {
+        /// Set to sync (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
+        set: Option<String>,
+    },
+    /// Show or change what a set is for; its AGENTS.md states it for agents.
+    ///
+    /// With no options, prints the goal and links.
+    Describe {
+        /// Set to describe (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
+        set: Option<String>,
+        /// The new goal; an empty one clears it
+        #[arg(short = 'm', long)]
+        goal: Option<String>,
+        /// Add a ticket, PR or doc about the goal (repeatable)
+        #[arg(short, long)]
+        link: Vec<String>,
+        /// Drop the existing links first
+        #[arg(long)]
+        clear_links: bool,
     },
     /// Delete a set; uncommitted work is kept under saved-<set> bookmarks.
     Delete {
         /// Set to delete (default: this session's set)
+        #[arg(add = ArgValueCandidates::new(set_names))]
         set: Option<String>,
         /// Do not ask for confirmation
         #[arg(short, long)]
@@ -143,6 +197,7 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    CompleteEnv::with_factory(Cli::command).complete();
     let cli = Cli::parse();
     let interactive = matches!(cli.command, None | Some(Command::Tui { .. }) | Some(Command::Procs { list: false, .. }));
     match run(cli.command, cli.output.format()) {
@@ -192,7 +247,7 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
         }
         Command::Open { set: None } => manager(env, rex, Launch::default()),
         Command::Open { set: Some(set) } => Ok(print_notes(ops::open(&env, &rex, &set)?)),
-        Command::New { set, repos } => {
+        Command::New { set, repos, goal, link } => {
             if env.exists(&set) {
                 bail!("{set} already exists");
             }
@@ -202,6 +257,9 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             }
             let picks = ops::resolve_repos(&env, &set, &repos)?;
             print_notes(ops::add(&env, &rex, &set, &picks)?);
+            if goal.is_some() || !link.is_empty() {
+                print_notes(ops::describe(&env, &set, goal.as_deref(), &link, false)?);
+            }
             Ok(print_notes(ops::open(&env, &rex, &set)?))
         }
         Command::Add { set, repos } => match (set.or_else(|| ops::current_set(&rex)), repos.is_empty()) {
@@ -220,6 +278,14 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
         Command::Close { set } => Ok(print_notes(ops::close(&env, &rex, &named_or_current(&rex, set)?)?)),
         Command::Pause { set } => Ok(print_notes(ops::pause(&env, &rex, &named_or_current(&rex, set)?)?)),
         Command::Resume { set } => Ok(print_notes(ops::resume(&env, &rex, &named_or_current(&rex, set)?)?)),
+        Command::Sync { set } => sync(&env, &named_or_current(&rex, set)?),
+        Command::Describe { set, goal, link, clear_links } => {
+            let set = named_or_current(&rex, set)?;
+            if goal.is_none() && link.is_empty() && !clear_links {
+                return show_goal(&env, &set, format);
+            }
+            Ok(print_notes(ops::describe(&env, &set, goal.as_deref(), &link, clear_links)?))
+        }
         Command::Delete { set, yes } => {
             let Some(set) = set.or_else(|| ops::current_set(&rex)) else {
                 return manager(env, rex, Launch { action: Some(Action::Delete), ..Launch::default() });
@@ -233,6 +299,70 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             Ok(print_notes(ops::delete(&env, &rex, &set)?))
         }
     }
+}
+
+fn sync(env: &Env, set: &str) -> Result<()> {
+    console::start(format!("syncing {set}"));
+    let reports = ops::sync(env, set)?;
+    for r in &reports {
+        if r.ok() {
+            console::done(r.summary(), None);
+        } else {
+            console::error(r.summary());
+        }
+    }
+    let failed = reports.iter().filter(|r| !r.ok()).count();
+    if failed > 0 {
+        bail!("{failed} of {} project(s) need attention", reports.len());
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct Goal {
+    set: String,
+    goal: Option<String>,
+    links: Vec<String>,
+}
+
+fn show_goal(env: &Env, set: &str, format: Format) -> Result<()> {
+    if !env.exists(set) {
+        bail!("no set named {set}");
+    }
+    let m = env.load(set)?;
+    let goal = Goal { set: m.name, goal: m.goal, links: m.links };
+    if format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&goal)?);
+        return Ok(());
+    }
+    match &goal.goal {
+        Some(text) => println!("{text}"),
+        None => console::note(format!("{set} has no goal; set one with rex-workspace describe {set} -m '…'")),
+    }
+    for link in &goal.links {
+        println!("{link}");
+    }
+    Ok(())
+}
+
+/// Completion candidates: every set, described by its goal.
+fn set_names() -> Vec<CompletionCandidate> {
+    Env::from_process()
+        .sets()
+        .into_iter()
+        .map(|m| {
+            let help = m.goal.or_else(|| Some(m.projects.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(" ")));
+            CompletionCandidate::new(m.name).help(help.map(Into::into))
+        })
+        .collect()
+}
+
+/// Completion candidates: every repository under the roots, described by its path.
+fn repo_names() -> Vec<CompletionCandidate> {
+    repos::scan(&Env::from_process().roots)
+        .into_iter()
+        .map(|p| CompletionCandidate::new(p.name).help(p.source.map(|s| tui::tilde(&s).into())))
+        .collect()
 }
 
 fn named_or_current(rex: &Rex, set: Option<String>) -> Result<String> {

@@ -49,6 +49,7 @@ pub struct ProjectRow {
 #[derive(Debug, Clone)]
 pub struct SetRow {
     pub name: String,
+    pub goal: Option<String>,
     pub projects: Vec<ProjectRow>,
     pub session: Option<String>,
     pub state: State,
@@ -65,10 +66,10 @@ impl SetRow {
         self.projects.iter().any(|p| !p.loaded)
     }
 
-    /// Fuzzy haystack: the set name, then its projects.
+    /// Fuzzy haystack: the set name, then its projects and goal.
     fn haystack(&self) -> String {
         let projects: Vec<_> = self.projects.iter().map(|p| p.name.as_str()).collect();
-        format!("{} {}", self.name, projects.join(" "))
+        format!("{} {} {}", self.name, projects.join(" "), self.goal.as_deref().unwrap_or(""))
     }
 }
 
@@ -92,6 +93,8 @@ pub enum Job {
     Close(String),
     Pause(String),
     Resume(String),
+    Sync(String),
+    Describe { set: String, goal: String },
 }
 
 impl Job {
@@ -105,6 +108,8 @@ impl Job {
             Job::Close(s) => format!("closing {s}…"),
             Job::Pause(s) => format!("pausing {s}…"),
             Job::Resume(s) => format!("resuming {s}…"),
+            Job::Sync(s) => format!("fetching and rebasing {s} onto trunk…"),
+            Job::Describe { set, .. } => format!("describing {set}…"),
         }
     }
 }
@@ -127,6 +132,7 @@ fn choice(label: &str, detail: &str) -> Choice<()> {
 
 pub enum Input {
     NewName,
+    Goal(String),
     /// Naming an extra version of `repos[base]`; the picker it came from is restored afterwards.
     Version { picker: Picker, purpose: Pick, repos: Vec<Project>, base: usize },
 }
@@ -223,6 +229,7 @@ impl App {
             .map(|m| {
                 let session = sessions.iter().find(|s| s.label == session_label(&m.name)).map(|s| s.id.clone());
                 SetRow {
+                goal: m.goal,
                 state: park::state(&self.env, &m.name, session.is_some()),
                 session,
                 tabs: None,
@@ -512,6 +519,18 @@ impl App {
         }
     }
 
+    fn sync_selected(&mut self) {
+        if let Some(name) = self.selected_name() {
+            self.pending = Some(Job::Sync(name));
+        }
+    }
+
+    fn edit_goal(&mut self) {
+        let Some(set) = self.current() else { return self.fail("no set selected") };
+        let (title, goal) = (format!(" Goal of {} — empty clears it ", set.name), set.goal.clone().unwrap_or_default());
+        self.modal = Some(Modal::Input { title, query: TextInput::new(&goal), purpose: Input::Goal(set.name.clone()) });
+    }
+
     fn toggle_pause(&mut self) {
         self.pending = match self.selected_live() {
             Some((name, State::Paused)) => Some(Job::Resume(name)),
@@ -601,6 +620,8 @@ impl App {
             KeyCode::Char('D') => self.begin_delete(),
             KeyCode::Char('c') => self.begin_close(),
             KeyCode::Char('p') => self.toggle_pause(),
+            KeyCode::Char('s') => self.sync_selected(),
+            KeyCode::Char('e') => self.edit_goal(),
             _ => {}
         }
     }
@@ -616,6 +637,7 @@ impl App {
                 KeyCode::Esc => {}
                 KeyCode::Enter => match purpose {
                     Input::NewName => self.begin_create(query.text().trim().to_string()),
+                    Input::Goal(set) => self.pending = Some(Job::Describe { set, goal: query.text().to_string() }),
                     Input::Version { picker, purpose, repos, base } => {
                         self.add_version(picker, purpose, repos, base, query.text().trim())
                     }
@@ -702,12 +724,18 @@ impl App {
             Job::Close(set) => ops::close(&self.env, &self.rex, set),
             Job::Pause(set) => ops::pause(&self.env, &self.rex, set),
             Job::Resume(set) => ops::resume(&self.env, &self.rex, set),
+            Job::Sync(set) => ops::sync(&self.env, set).and_then(|reports| {
+                let text = reports.iter().map(ops::SyncReport::summary).collect::<Vec<_>>().join(" · ");
+                if reports.iter().all(ops::SyncReport::ok) { Ok(vec![text]) } else { Err(anyhow::anyhow!(text)) }
+            }),
+            Job::Describe { set, goal } => ops::describe(&self.env, set, Some(goal), &[], false),
         };
         // The hub is shared and long-lived: it stays up after switching away.
         let leaves = !self.hub && matches!(job, Job::Open(_) | Job::Create { .. });
         let select = match &job {
             Job::Create { set, .. } | Job::Add { set, .. } | Job::Remove { set, .. } => Some(set.clone()),
-            Job::Close(set) | Job::Pause(set) | Job::Resume(set) => Some(set.clone()),
+            Job::Close(set) | Job::Pause(set) | Job::Resume(set) | Job::Sync(set) => Some(set.clone()),
+            Job::Describe { set, .. } => Some(set.clone()),
             _ => None,
         };
         match result {
@@ -751,7 +779,7 @@ mod tests {
         let env = Env { workspaces_dir: dir.to_path_buf(), roots: vec![] };
         for (name, projects) in sets {
             let projects = projects.iter().map(|p| Project { name: (*p).into(), source: None, feature: None }).collect();
-            env.save(&Manifest { name: (*name).into(), projects }).unwrap();
+            env.save(&Manifest { name: (*name).into(), projects, ..Manifest::default() }).unwrap();
         }
         // No Rex server: sessions come back empty.
         std::env::set_var("REX_BIN", "/nonexistent");
@@ -901,6 +929,54 @@ mod tests {
         let mut app = app(tmp.path(), &[("abe", &["one"])]);
         app.key(key(KeyCode::Enter));
         assert!(matches!(&app.pending, Some(Job::Open(s)) if s == "abe"));
+    }
+
+    #[test]
+    fn s_queues_syncing_the_selected_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"])]);
+        press(&mut app, 's');
+        assert!(matches!(&app.pending, Some(Job::Sync(s)) if s == "abe"));
+    }
+
+    #[test]
+    fn e_prefills_the_goal_prompt_with_the_current_goal() {
+        // GIVEN a set with a goal
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"])]);
+        app.sets[0].goal = Some("ship".into());
+        // WHEN
+        press(&mut app, 'e');
+        // THEN
+        assert!(matches!(&app.modal, Some(Modal::Input { query, .. }) if query.text() == "ship"));
+    }
+
+    #[test]
+    fn enter_in_the_goal_prompt_queues_describing_the_set() {
+        // GIVEN the goal prompt with text typed
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"])]);
+        press(&mut app, 'e');
+        press(&mut app, 'x');
+        // WHEN
+        app.key(key(KeyCode::Enter));
+        // THEN
+        assert!(matches!(&app.pending, Some(Job::Describe { set, goal }) if set == "abe" && goal == "x"));
+    }
+
+    #[test]
+    fn filtering_by_goal_text_finds_the_set() {
+        // GIVEN two sets, one with a goal
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path(), &[("abe", &["one"]), ("zed", &["two"])]);
+        app.sets[1].goal = Some("retries".into());
+        // WHEN
+        press(&mut app, '/');
+        for c in "retries".chars() {
+            press(&mut app, c);
+        }
+        // THEN
+        assert_eq!(app.current().map(|s| s.name.as_str()), Some("zed"));
     }
 
     #[test]
@@ -1118,7 +1194,7 @@ mod tests {
             loaded: true,
         };
         let set =
-            SetRow { name: "s".into(), projects: vec![row(true), row(false)], session: None, state: State::Idle, tabs: None, updated: None };
+            SetRow { name: "s".into(), goal: None, projects: vec![row(true), row(false)], session: None, state: State::Idle, tabs: None, updated: None };
         assert_eq!(set.dirty(), 1);
     }
 }

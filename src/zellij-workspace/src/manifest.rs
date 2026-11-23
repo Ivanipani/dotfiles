@@ -14,6 +14,9 @@ pub const AGENTS_FILE_NAME: &str = "AGENTS.md";
 pub struct Manifest {
     pub name: String,
     pub projects: Vec<Component>,
+    /// Fields only rex-workspace knows (goal, links), kept as they are on save.
+    #[serde(flatten)]
+    pub extra: serde_yaml_ng::Mapping,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
@@ -106,11 +109,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn load_then_save_keeps_fields_it_does_not_know() {
+        // GIVEN a manifest written by rex-workspace with a goal
+        let manifest: Manifest = serde_yaml_ng::from_str("name: set\ngoal: ship\nprojects: []\n").unwrap();
+        // WHEN
+        let text = serde_yaml_ng::to_string(&manifest).unwrap();
+        // THEN
+        assert!(text.contains("goal: ship"));
+    }
+
+    #[test]
     fn round_trips_through_yaml() {
         let mount = std::env::temp_dir().join(format!("workspace-manifest-{}", std::process::id()));
         std::fs::create_dir_all(mount.join("ws")).unwrap();
         let config = Config { workspaces_dir: "/ws".into(), ..Config::default() };
-        let mut manifest = Manifest { name: "set".into(), projects: Vec::new() };
+        let mut manifest = Manifest { name: "set".into(), ..Default::default() };
         manifest.add(Component { name: "b".into(), source: Some("/src/b".into()) });
         manifest.add(Component { name: "a".into(), source: None });
         manifest.save(&config, &mount).unwrap();

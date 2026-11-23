@@ -205,6 +205,97 @@ fn signal_set(rex: &Rex, set: &str, signal: &str) -> Result<(usize, u64)> {
     Ok((done.len(), procs::Usage::of(done).rss_kb))
 }
 
+/// Change what the set is for: `goal` replaces it (empty clears it), `links` are appended unless `clear_links`.
+pub fn describe(env: &Env, set: &str, goal: Option<&str>, links: &[String], clear_links: bool) -> Result<Vec<String>> {
+    if !env.exists(set) {
+        bail!("no set named {set}");
+    }
+    let mut manifest = env.load(set)?;
+    if let Some(goal) = goal {
+        manifest.goal = Some(goal.trim()).filter(|g| !g.is_empty()).map(String::from);
+    }
+    if clear_links {
+        manifest.links.clear();
+    }
+    for link in links {
+        if !manifest.links.contains(link) {
+            manifest.links.push(link.clone());
+        }
+    }
+    env.save(&manifest)?;
+    Ok(vec![format!("described {set}; its AGENTS.md states the goal")])
+}
+
+/// One project's outcome of `sync`.
+pub struct SyncReport {
+    pub project: String,
+    /// Fetch failed (offline, no remote): the rebase still ran against what was already fetched.
+    pub fetch_error: Option<String>,
+    pub result: Result<jj::Synced, String>,
+}
+
+impl SyncReport {
+    pub fn summary(&self) -> String {
+        let result = match &self.result {
+            Ok(jj::Synced::NoTrunk) => "skipped: no trunk() to rebase onto".into(),
+            Ok(jj::Synced::UpToDate { conflicts: 0 }) => "up to date".into(),
+            Ok(jj::Synced::UpToDate { conflicts }) => format!("up to date, {conflicts} conflicted commit(s)"),
+            Ok(jj::Synced::Rebased { behind, conflicts: 0 }) => format!("rebased onto trunk ({behind} new)"),
+            Ok(jj::Synced::Rebased { behind, conflicts }) => {
+                format!("rebased onto trunk ({behind} new), {conflicts} conflicted commit(s)")
+            }
+            Err(e) => e.clone(),
+        };
+        match &self.fetch_error {
+            Some(e) => format!("{}: {result} (fetch failed: {e})", self.project),
+            None => format!("{}: {result}", self.project),
+        }
+    }
+
+    pub fn ok(&self) -> bool {
+        matches!(self.result, Ok(jj::Synced::NoTrunk | jj::Synced::UpToDate { conflicts: 0 } | jj::Synced::Rebased { conflicts: 0, .. }))
+    }
+}
+
+/// Fetch each repository once, then rebase every project's `@` onto `trunk()`. Repositories run in
+/// parallel; workspaces of one repository run in turn, since they share its operation log.
+pub fn sync(env: &Env, set: &str) -> Result<Vec<SyncReport>> {
+    let manifest = env.load(set)?;
+    if manifest.projects.is_empty() {
+        bail!("no set named {set}");
+    }
+    let mut repos: Vec<(String, Vec<String>)> = vec![];
+    for p in manifest.projects {
+        let key = p.source.clone().unwrap_or_else(|| p.name.clone());
+        match repos.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, names)) => names.push(p.name),
+            None => repos.push((key, vec![p.name])),
+        }
+    }
+    let dir = env.set_dir(set);
+    let reports = std::thread::scope(|scope| {
+        let handles: Vec<_> = repos
+            .iter()
+            .map(|(_, names)| {
+                let dir = &dir;
+                scope.spawn(move || {
+                    let fetch_error = jj::fetch(&dir.join(&names[0])).err().map(|e| format!("{e:#}"));
+                    names
+                        .iter()
+                        .map(|name| SyncReport {
+                            project: name.clone(),
+                            fetch_error: fetch_error.clone(),
+                            result: jj::rebase_onto_trunk(&dir.join(name)).map_err(|e| format!("{e:#}")),
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect::<Vec<_>>()
+    });
+    Ok(reports)
+}
+
 /// The set of the session this runs in, when it is a `ws-` session.
 pub fn current_set(rex: &Rex) -> Option<String> {
     rex.current_label()?.strip_prefix("ws-").map(String::from)
@@ -217,6 +308,7 @@ pub fn require_current_set(rex: &Rex) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
 
     fn env_with_repos(names: &[&str]) -> (tempfile::TempDir, Env) {
         let tmp = tempfile::tempdir().unwrap();
@@ -256,7 +348,7 @@ mod tests {
         // GIVEN api already in the set
         let (_tmp, env) = env_with_repos(&["api"]);
         let api = resolve_repos(&env, "demo", &["api".to_string()]).unwrap();
-        env.save(&crate::manifest::Manifest { name: "demo".into(), projects: api }).unwrap();
+        env.save(&crate::manifest::Manifest { name: "demo".into(), projects: api, ..Default::default() }).unwrap();
         // WHEN / THEN
         assert!(resolve_repos(&env, "demo", &["api".to_string()]).is_err());
     }
@@ -266,9 +358,108 @@ mod tests {
         // GIVEN api already in the set
         let (_tmp, env) = env_with_repos(&["api"]);
         let api = resolve_repos(&env, "demo", &["api".to_string()]).unwrap();
-        env.save(&crate::manifest::Manifest { name: "demo".into(), projects: api }).unwrap();
+        env.save(&crate::manifest::Manifest { name: "demo".into(), projects: api, ..Default::default() }).unwrap();
         // WHEN / THEN
         assert_eq!(resolved(&env, &["api:v2"]), ["api-v2"]);
+    }
+
+    #[test]
+    fn describe_replaces_the_goal() {
+        // GIVEN a set with a goal
+        let (_tmp, env) = env_with_repos(&[]);
+        env.save(&crate::manifest::Manifest { name: "demo".into(), goal: Some("old".into()), ..Default::default() }).unwrap();
+        // WHEN
+        describe(&env, "demo", Some("new"), &[], false).unwrap();
+        // THEN
+        assert_eq!(env.load("demo").unwrap().goal.as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn describe_with_an_empty_goal_clears_it() {
+        let (_tmp, env) = env_with_repos(&[]);
+        env.save(&crate::manifest::Manifest { name: "demo".into(), goal: Some("old".into()), ..Default::default() }).unwrap();
+        describe(&env, "demo", Some("  "), &[], false).unwrap();
+        assert_eq!(env.load("demo").unwrap().goal, None);
+    }
+
+    #[test]
+    fn describe_with_a_link_already_present_does_not_repeat_it() {
+        // GIVEN
+        let (_tmp, env) = env_with_repos(&[]);
+        let links = vec!["https://x/1".to_string()];
+        env.save(&crate::manifest::Manifest { name: "demo".into(), links: links.clone(), ..Default::default() }).unwrap();
+        // WHEN
+        describe(&env, "demo", None, &links, false).unwrap();
+        // THEN
+        assert_eq!(env.load("demo").unwrap().links, links);
+    }
+
+    #[test]
+    fn describe_for_a_missing_set_fails() {
+        let (_tmp, env) = env_with_repos(&[]);
+        assert!(describe(&env, "nope", Some("x"), &[], false).is_err());
+    }
+
+    /// A set `demo` with one project `api`, a workspace of a fresh repo whose trunk is `main@origin`.
+    fn synced_set(tmp: &Path, env: &Env) -> PathBuf {
+        let run = |dir: &Path, args: &[&str]| {
+            let out = std::process::Command::new("jj").args(args).current_dir(dir).env("JJ_CONFIG", "/dev/null")
+                .env("JJ_USER", "t").env("JJ_EMAIL", "t@t").output().unwrap();
+            assert!(out.status.success(), "jj {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        let (origin, src) = (tmp.join("origin.git"), tmp.join("src/api"));
+        std::fs::create_dir_all(&src).unwrap();
+        assert!(std::process::Command::new("git").args(["init", "-q", "--bare"]).arg(&origin).status().unwrap().success());
+        run(&src, &["git", "init"]);
+        run(&src, &["git", "remote", "add", "origin", &origin.to_string_lossy()]);
+        run(&src, &["commit", "-m", "base"]);
+        run(&src, &["bookmark", "create", "main", "-r", "@-"]);
+        run(&src, &["git", "push", "-b", "main"]);
+        let pick = Project { name: "api".into(), source: Some(src.to_string_lossy().into()), feature: None };
+        add(env, &Rex::locate(), "demo", &[pick]).unwrap();
+        // Trunk moves on in the source.
+        run(&src, &["new", "main", "-m", "upstream"]);
+        run(&src, &["bookmark", "set", "main", "-r", "@"]);
+        run(&src, &["git", "push", "-b", "main"]);
+        src
+    }
+
+    #[test]
+    fn sync_when_trunk_moved_rebases_the_workspace_onto_it() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        synced_set(tmp.path(), &env);
+        // WHEN
+        let reports = sync(&env, "demo").unwrap();
+        // THEN
+        assert_eq!(reports[0].result, Ok(jj::Synced::Rebased { behind: 1, conflicts: 0 }));
+    }
+
+    #[test]
+    fn sync_twice_reports_the_second_as_up_to_date() {
+        // GIVEN a set synced once
+        let (tmp, env) = env_with_repos(&[]);
+        synced_set(tmp.path(), &env);
+        sync(&env, "demo").unwrap();
+        // WHEN
+        let reports = sync(&env, "demo").unwrap();
+        // THEN
+        assert_eq!(reports[0].result, Ok(jj::Synced::UpToDate { conflicts: 0 }));
+    }
+
+    #[test]
+    fn sync_without_a_remote_trunk_skips_the_project() {
+        // GIVEN a repo with no remote
+        let (tmp, env) = env_with_repos(&[]);
+        let src = tmp.path().join("src/api");
+        std::fs::create_dir_all(&src).unwrap();
+        assert!(std::process::Command::new("jj").args(["git", "init"]).current_dir(&src).output().unwrap().status.success());
+        let pick = Project { name: "api".into(), source: Some(src.to_string_lossy().into()), feature: None };
+        add(&env, &Rex::locate(), "demo", &[pick]).unwrap();
+        // WHEN
+        let reports = sync(&env, "demo").unwrap();
+        // THEN
+        assert_eq!(reports[0].result, Ok(jj::Synced::NoTrunk));
     }
 
     #[test]

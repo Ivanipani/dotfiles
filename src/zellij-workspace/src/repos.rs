@@ -204,7 +204,7 @@ mod tests {
         std::fs::create_dir_all(mount.join("ws")).unwrap();
         let config = Config { workspaces_dir: "/ws".into(), ..Config::default() };
         assert!(missing_sources(&config, &mount, "set").is_empty());
-        let mut manifest = Manifest { name: "set".into(), projects: Vec::new() };
+        let mut manifest = Manifest { name: "set".into(), ..Default::default() };
         manifest.add(Component { name: "kept".into(), source: Some("/src/kept".into()) });
         manifest.add(Component { name: "gone".into(), source: Some("/src/gone".into()) });
         manifest.add(Component { name: "unknown".into(), source: None });

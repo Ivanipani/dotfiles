@@ -54,6 +54,7 @@ pub fn forget(dir: &Path) -> Result<Option<String>> {
 pub struct Status {
     pub change: String,
     pub dirty: bool,
+    pub conflict: bool,
     pub description: String,
     /// Bookmarks on `@`, else the nearest ancestor's.
     pub bookmarks: String,
@@ -61,13 +62,16 @@ pub struct Status {
 }
 
 const STATUS_TEMPLATE: &str =
-    r#"change_id.shortest(8) ++ "\t" ++ if(empty, "clean", "dirty") ++ "\t" ++ description.first_line() ++ "\t" ++ bookmarks"#;
+    r#"change_id.shortest(8) ++ "\t" ++ if(empty, "clean", "dirty") ++ if(conflict, " conflict") ++ "\t" ++ description.first_line() ++ "\t" ++ bookmarks"#;
 
 pub fn parse_status(line: &str) -> Status {
     let mut f = line.trim_end_matches('\n').splitn(4, '\t');
+    let change = f.next().unwrap_or_default().into();
+    let state = f.next().unwrap_or_default();
     Status {
-        change: f.next().unwrap_or_default().into(),
-        dirty: f.next() == Some("dirty"),
+        change,
+        dirty: state.starts_with("dirty"),
+        conflict: state.ends_with(" conflict"),
         description: f.next().unwrap_or_default().into(),
         bookmarks: f.next().unwrap_or_default().trim().into(),
         changed_files: 0,
@@ -93,6 +97,37 @@ pub fn status(dir: &Path) -> Option<Status> {
     Some(status)
 }
 
+/// What syncing one workspace did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Synced {
+    /// `trunk()` resolves to the root commit: no remote main/master/trunk to rebase onto.
+    NoTrunk,
+    UpToDate { conflicts: usize },
+    /// Rebased past `behind` new trunk commits.
+    Rebased { behind: usize, conflicts: usize },
+}
+
+pub fn fetch(dir: &Path) -> Result<()> {
+    jj_ok(dir, &["git", "fetch"]).map(drop)
+}
+
+fn count(dir: &Path, revset: &str) -> Result<usize> {
+    Ok(jj_ok(dir, &["log", "-r", revset, "--no-graph", "-T", r#""x\n""#])?.lines().count())
+}
+
+/// Rebase the branch of `@` onto `trunk()` when trunk has moved on.
+pub fn rebase_onto_trunk(dir: &Path) -> Result<Synced> {
+    if count(dir, "trunk() ~ root()")? == 0 {
+        return Ok(Synced::NoTrunk);
+    }
+    let behind = count(dir, "::trunk() ~ ::@")?;
+    if behind > 0 {
+        jj_ok(dir, &["rebase", "-b", "@", "-d", "trunk()"])?;
+    }
+    let conflicts = count(dir, "conflicts() & (trunk()..@)")?;
+    Ok(if behind == 0 { Synced::UpToDate { conflicts } } else { Synced::Rebased { behind, conflicts } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +148,16 @@ mod tests {
         let s = parse_status("abcd1234\tclean\tfix it\tmain \n");
         // THEN
         assert_eq!((s.description.as_str(), s.bookmarks.as_str()), ("fix it", "main"));
+    }
+
+    #[test]
+    fn parse_status_when_conflicted_marks_the_conflict() {
+        assert!(parse_status("abcd1234\tdirty conflict\twip\tmain\n").conflict);
+    }
+
+    #[test]
+    fn parse_status_when_conflicted_still_reads_dirty() {
+        assert!(parse_status("abcd1234\tdirty conflict\twip\tmain\n").dirty);
     }
 
     #[test]
