@@ -670,15 +670,28 @@ mod tests {
     }
 
     #[test]
-    fn push_of_a_change_names_the_bookmark_under_the_workspace_prefix() {
+    fn push_of_a_change_names_the_bookmark_after_its_description_under_the_workspace_prefix() {
         // GIVEN
         let (tmp, env) = env_with_repos(&[]);
         let src = remote_set(tmp.path(), &env);
-        commit(&api(&env), "a", "feature");
+        commit(&api(&env), "a", "feat(fleet): Show agents' status!");
         // WHEN
         jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
         // THEN
-        assert!(remote_bookmarks(&src).contains("agent/demo/"));
+        assert!(remote_bookmarks(&src).contains("agent/demo/feat-fleet-show-agents-status@origin"));
+    }
+
+    #[test]
+    fn push_of_an_undescribed_change_names_the_bookmark_after_its_change_id() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "");
+        let change = jj::jj_ok(&api(&env), &["log", "-r", "@-", "--no-graph", "-T", "change_id.short()"]).unwrap();
+        // WHEN
+        jj::jj_ok(&api(&env), &["git", "push", "--allow-empty-description", "-c", "@-"]).unwrap();
+        // THEN
+        assert!(remote_bookmarks(&src).contains(&format!("agent/demo/{change}@origin")));
     }
 
     #[test]
