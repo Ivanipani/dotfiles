@@ -70,6 +70,88 @@ def test_guard(repo, tmp_path, command, blocked):
         assert result.stdout == ""
 
 
+def _run_cb_guard(repo, tmp_path, command, enrolled="Ivanipani/edifice", origin=None):
+    """GIVEN a jj repo with `origin`, and `enrolled` listed for conveyor-belt; WHEN the hook sees `command`."""
+    origin = origin or "git@github.com:Ivanipani/edifice.git"
+    fake_jj = tmp_path / "jj"
+    fake_jj.write_text(f"#!/bin/sh\necho 'origin {origin}'\n")
+    fake_jj.chmod(0o755)
+    if enrolled is not None:
+        config = tmp_path / "config/conveyor-belt"
+        config.mkdir(parents=True)
+        (config / "repos").write_text(f"# enrolled\n{enrolled}\n")
+    result = subprocess.run(
+        [str(repo / "configs/agents/hooks/cb-guard.sh")],
+        input=json.dumps({"cwd": str(tmp_path), "tool_input": {"command": command}}),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        },
+    )
+    return result.stdout
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "jj git push -b main",
+        "jj git push --bookmark main",
+        "jj git push --bookmark=main",
+        "jj git push --named main=@-",
+        "jj git push -b exact:main",
+        "jj git push --all",
+        "jj git push --tracked",
+        "jj git push",
+        "jj bookmark set main -r @- && jj git push -b main",
+        "jj -R . git push -b main",
+    ],
+)
+def test_cb_guard_denies_a_push_of_main_in_an_enrolled_repo(repo, tmp_path, command):
+    # GIVEN an enrolled repo WHEN an agent pushes main THEN the push is denied
+    stdout = _run_cb_guard(repo, tmp_path, command)
+    assert json.loads(stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "jj git push -b agent/x/fix",
+        "jj git push --named agent/x/fix=@-",
+        "jj git push --named cb/agent/1=main",
+        "jj git push -c @-",
+        "jj git fetch",
+        "jj log -r main",
+        "echo jj git push -b main",
+    ],
+)
+def test_cb_guard_allows_commands_that_do_not_push_main(repo, tmp_path, command):
+    # GIVEN an enrolled repo WHEN an agent runs something that does not push main THEN it passes
+    assert _run_cb_guard(repo, tmp_path, command) == ""
+
+
+def test_cb_guard_allows_a_push_of_main_in_a_repo_that_is_not_enrolled(repo, tmp_path):
+    # GIVEN a repo conveyor-belt does not own WHEN an agent pushes main THEN it passes
+    stdout = _run_cb_guard(repo, tmp_path, "jj git push -b main", enrolled="Ivanipani/other")
+    assert stdout == ""
+
+
+def test_cb_guard_does_nothing_without_an_enrolment_file(repo, tmp_path):
+    # GIVEN no conveyor-belt enrolment file WHEN an agent pushes main THEN it passes
+    assert _run_cb_guard(repo, tmp_path, "jj git push -b main", enrolled=None) == ""
+
+
+def test_cb_guard_matches_an_https_origin(repo, tmp_path):
+    # GIVEN an enrolled repo cloned over https WHEN an agent pushes main THEN the push is denied
+    stdout = _run_cb_guard(
+        repo, tmp_path, "jj git push -b main", origin="https://github.com/Ivanipani/edifice"
+    )
+    assert json.loads(stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_stop_does_not_loop(repo):
     result = subprocess.run(
         [str(repo / "configs/agents/hooks/jj-commit.sh")],

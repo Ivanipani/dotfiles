@@ -29,6 +29,10 @@
           {
             "type": "command",
             "command": "\"$HOME/.{{ client }}/hooks/jj-guard.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$HOME/.{{ client }}/hooks/cb-guard.sh\""
           }
         ]
       }{% if client == "claude" %},
