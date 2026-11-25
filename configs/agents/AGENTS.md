@@ -8,10 +8,12 @@ what is being tested and what the expectation is such that if the test fails, we
 
 ## Model delegation (Claude Code)
 
-Keep the main thread for idea generation, planning, bug-finding, and review. Delegate the rest via the Agent tool, always setting the model explicitly:
+I explicitly authorize and expect subagent use for the task types below; do not wait to be asked. Keep the main thread for idea generation, planning, bug-finding, and review.
 
-- `implementer` (sonnet): writing code and tests from an agreed plan.
-- `ops-runner` (haiku): running commands/tests, merging, triggering and waiting on deploys or CI, polling status, reading logs.
+Granularity: delegate a whole unit of work, i.e. babysitting a process (deploy, CI, rollout, long test run) or implementing one part of a feature. Run one-off quick commands inline.
+
+- `implementer` (sonnet): implementing a part of a feature from an agreed plan, with its tests.
+- `ops-runner` (haiku): babysitting a process, plus merging, triggering deploys, and reading logs.
 - Searching/reading code: `Explore` (haiku) or `model: "haiku"`.
-- Never use opus/fable for a subagent unless the task is design, root-causing a hard bug, or review.
-- Give subagents full context (plan, paths, success condition) and ask for a brief report.
+- Always set the model explicitly. Never use opus/fable for a subagent unless the task is design, root-causing a hard bug, or review.
+- Subagents start cold: give them the plan, paths, and success condition, and ask for a brief report.
