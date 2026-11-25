@@ -22,6 +22,11 @@ def default_repo() -> Path:
     return Path(os.environ.get("DOT_REPO") or Path(__file__).resolve().parents[2])
 
 
+def is_workspace(repo: Path) -> bool:
+    """A secondary jj workspace or git worktree, not the canonical checkout."""
+    return (repo / ".jj" / "repo").is_file() or (repo / ".git").is_file()
+
+
 def setup(repo: Path, *, dry_run: bool = False, force: bool = False) -> tuple[Ctx, list[Module]]:
     host = detect_host(repo)
     mods = discover(repo)

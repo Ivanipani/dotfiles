@@ -375,3 +375,37 @@ def test_rex_status_ignores_events_it_has_no_state_for(repo, tmp_path):
 
 def test_rex_status_is_silent_outside_rex(repo, tmp_path):
     assert _run_rex_status(repo, tmp_path, {"hook_event_name": "Stop"}, in_rex=False) == ""
+
+
+def _run_dot_apply_hook(repo, tmp_path, *, workspace):
+    root = tmp_path / "root"
+    (root / "bin").mkdir(parents=True)
+    (root / "bin" / "dot").write_text("")
+    (root / "configs/agents/hooks").mkdir(parents=True)
+    (root / "configs/agents/hooks/dot-apply.sh").write_text("")
+    (root / ".jj").mkdir()
+    if workspace:
+        (root / ".jj" / "repo").write_text("../main/.jj/repo")
+    else:
+        (root / ".jj" / "repo").mkdir()
+    fake_jj = tmp_path / "jj"
+    fake_jj.write_text(f"#!/bin/sh\necho {root}\n")
+    fake_jj.chmod(0o755)
+    return subprocess.run(
+        [str(repo / "configs/agents/hooks/dot-apply.sh")],
+        input=json.dumps({"cwd": str(root)}),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"},
+    )
+
+
+def test_dot_apply_hook_blocks_stop_in_the_main_checkout(repo, tmp_path):
+    result = _run_dot_apply_hook(repo, tmp_path, workspace=False)
+    assert json.loads(result.stdout)["decision"] == "block"
+
+
+def test_dot_apply_hook_is_silent_in_a_workspace(repo, tmp_path):
+    result = _run_dot_apply_hook(repo, tmp_path, workspace=True)
+    assert result.stdout == ""

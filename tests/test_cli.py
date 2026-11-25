@@ -183,3 +183,21 @@ def test_doctor_leaves_unpinned_binaries_unprobed(run, fake_env, monkeypatch):
     # THEN only the pinned binaries are probed
     assert result.exit_code == 0
     assert sorted(probed) == ["jjui", "tilt"]
+
+
+@pytest.fixture
+def workspace_repo(tmp_path, monkeypatch):
+    repo = tmp_path / "workspace"
+    (repo / ".jj").mkdir(parents=True)
+    (repo / ".jj" / "repo").write_text("../../main/.jj/repo")
+    monkeypatch.setattr("dot.cli.REPO", repo)
+    return repo
+
+
+def test_apply_from_workspace_without_force_is_refused(run, workspace_repo):
+    # GIVEN dot runs from a secondary jj workspace
+    # WHEN apply runs without --force
+    result = run("apply")
+    # THEN it refuses with a usage error
+    assert result.exit_code == 2
+    assert "workspace" in result.output

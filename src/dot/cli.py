@@ -223,6 +223,12 @@ def apply(
     all: ShowAll = False,
 ) -> None:
     """Reconcile the machine with this repo."""
+    if session.is_workspace(REPO) and not (force or dry_run):
+        err_console.print(
+            f"[error]✖[/] {REPO} is a workspace, not the main checkout: applying would "
+            "point your dotfiles here. Run from the main checkout, or pass --force."
+        )
+        raise typer.Exit(2)
     ctx, mods = _setup(dry_run=dry_run, force=force)
     chosen, items = _plan(ctx, mods, modules)
     checked = reconcile.check(items, ctx)

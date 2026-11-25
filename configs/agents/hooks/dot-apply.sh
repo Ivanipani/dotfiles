@@ -11,8 +11,9 @@ cd "$cwd" || exit 0
 command -v jj >/dev/null 2>&1 || exit 0
 root=$(jj root 2>/dev/null) || exit 0
 
-# Scope this shared hook to dotfiles, including its jj workspaces.
+# Scope this shared hook to the main dotfiles checkout: applying from a workspace relinks $HOME into it.
 [ -f "$root/bin/dot" ] && [ -f "$root/configs/agents/hooks/dot-apply.sh" ] || exit 0
+[ ! -f "$root/.jj/repo" ] || exit 0
 
 jq -n '{
   decision: "block",
