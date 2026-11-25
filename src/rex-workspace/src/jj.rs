@@ -27,29 +27,6 @@ pub fn agent_prefix(ws: &str) -> String {
     format!("agent/{ws}/")
 }
 
-/// The keys earlier versions set in each workspace's jj config.
-const OWN_CONFIG: [&str; 3] = ["snapshot.auto-update-stale", r#"revset-aliases."immutable_heads()""#, "templates.git_push_bookmark"];
-
-/// Take the keys earlier versions set out of the jj config of the workspace at `dir`, which jj
-/// keeps outside it, in `~/.config/jj/workspaces/<id>/`; the file goes once nothing else is in it.
-pub fn drop_workspace_config(dir: &Path) -> Result<()> {
-    let file = std::path::PathBuf::from(jj_ok(dir, &["config", "path", "--workspace"])?.trim());
-    if !file.exists() {
-        return Ok(());
-    }
-    for key in OWN_CONFIG {
-        // Fails only when the key is not set.
-        let _ = jj(dir, &["config", "unset", "--workspace", key]);
-    }
-    if jj_ok(dir, &["config", "list", "--workspace"])?.trim().is_empty() {
-        std::fs::remove_file(&file)?;
-        if let Some(parent) = file.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
-    Ok(())
-}
-
 /// Work on the branch of `@` that no remote holds.
 const STRANDED: &str = "((trunk()..@) & mutable() & ~empty()) ~ ::remote_bookmarks()";
 
@@ -137,7 +114,6 @@ pub fn forget(dir: &Path, ws: &str) -> Result<Vec<String>> {
         return Ok(vec![]);
     }
     let notes = rescue(dir, ws)?;
-    drop_workspace_config(dir)?;
     jj_ok(dir, &["workspace", "forget"])?;
     Ok(notes)
 }

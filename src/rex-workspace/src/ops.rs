@@ -1,6 +1,6 @@
 //! Set lifecycle: shared by the CLI and the TUI. Each operation returns notes to show the user.
 
-use crate::manifest::{session_label, validate_name, Env, Manifest, Project};
+use crate::manifest::{session_label, validate_name, Env, Project};
 use crate::park::{self, Snapshot};
 use crate::rex::{project_window, Rex};
 use crate::{jj, procs, repos};
@@ -136,7 +136,7 @@ pub fn open(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
-    let mut notes = drop_workspace_configs(env, &manifest);
+    let mut notes = vec![];
     let id = match rex.find(&session_label(set)) {
         Some(id) => {
             if park::is_paused(env, set) {
@@ -271,7 +271,6 @@ pub fn sync(env: &Env, set: &str) -> Result<Vec<SyncReport>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
-    drop_workspace_configs(env, &manifest);
     let mut repos: Vec<(String, Vec<String>)> = vec![];
     for p in manifest.projects {
         let key = p.source.clone().unwrap_or_else(|| p.name.clone());
@@ -312,18 +311,6 @@ pub fn current_set(env: &Env, rex: &Rex) -> Option<String> {
 
 pub fn require_current_set(env: &Env, rex: &Rex) -> Result<String> {
     current_set(env, rex).ok_or_else(|| anyhow!("no set given, and neither inside a set's directory nor a ws- session"))
-}
-
-/// Clean the jj config earlier versions wrote out of the set's workspaces; failures are notes.
-fn drop_workspace_configs(env: &Env, manifest: &Manifest) -> Vec<String> {
-    manifest
-        .projects
-        .iter()
-        .filter_map(|p| {
-            let dir = env.set_dir(&manifest.name).join(&p.name);
-            jj::drop_workspace_config(&dir).err().map(|e| format!("{}: {e:#}", p.name))
-        })
-        .collect()
 }
 
 /// A stranded head of one of the set's projects.
@@ -657,31 +644,6 @@ mod tests {
         remote_set(tmp.path(), &env);
         // THEN
         assert!(!workspace_config(&api(&env)).exists());
-    }
-
-    #[test]
-    fn sync_deletes_a_workspace_config_holding_only_keys_rex_workspace_set() {
-        // GIVEN a workspace configured by an earlier version
-        let (tmp, env) = env_with_repos(&[]);
-        remote_set(tmp.path(), &env);
-        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"]).unwrap();
-        // WHEN
-        sync(&env, "demo").unwrap();
-        // THEN
-        assert!(!workspace_config(&api(&env)).exists());
-    }
-
-    #[test]
-    fn sync_keeps_workspace_config_keys_rex_workspace_did_not_set() {
-        // GIVEN
-        let (tmp, env) = env_with_repos(&[]);
-        remote_set(tmp.path(), &env);
-        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"]).unwrap();
-        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "ui.color", "never"]).unwrap();
-        // WHEN
-        sync(&env, "demo").unwrap();
-        // THEN
-        assert_eq!(jj::jj_ok(&api(&env), &["config", "list", "--workspace"]).unwrap().trim(), r#"ui.color = "never""#);
     }
 
     #[test]
