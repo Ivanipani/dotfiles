@@ -68,6 +68,7 @@ Examples:
   rex-workspace stranded              Work in this set that exists only on this machine
   rex-workspace reap                  Agent bookmarks (landed, active, stale) and orphaned commits
   rex-workspace reap --prune          … deleting the landed bookmarks
+  rex-workspace tidy --orphans        Delete this repo's landed bookmarks, abandon orphaned work
   rex-workspace add feat-x docs       Add a repo; an open session gains a tab
   rex-workspace add feat-x api:v2     Add a second jj workspace of api, as tab api-v2
   rex-workspace close feat-x          End the session, freeing everything; open brings its tabs back
@@ -212,6 +213,23 @@ enum Command {
         #[arg(long)]
         prune: bool,
     },
+    /// Delete the landed bookmarks of the repository here, locally and on their remotes.
+    ///
+    /// Fetches first. A bookmark is landed when trunk contains its target here and on every remote
+    /// (a remote's older version of a change that landed counts). Long-lived bookmarks are kept:
+    /// main, master, trunk, develop, dev, prod, production, staging, release/*, or the globs of
+    /// jj's `flight.keep-bookmarks` setting. Lists what would go and asks first. `jj tidy` runs it.
+    Tidy {
+        /// Also abandon orphaned work: commits no bookmark, remote or workspace points at
+        #[arg(long)]
+        orphans: bool,
+        /// Only list what would be cleared
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+        /// Do not ask for confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Delete a set; work that exists only here is pushed under agent/<workspace>/saved bookmarks.
     Delete {
         /// Set to delete (default: this session's set)
@@ -324,6 +342,7 @@ fn run(command: Option<Command>, format: Format) -> Result<()> {
             }
             Ok(print_notes(ops::describe(&env, &set, goal.as_deref(), &link, clear_links)?))
         }
+        Command::Tidy { orphans, dry_run, yes } => tidy(orphans, dry_run, yes, format),
         Command::Delete { set, yes } => {
             let Some(set) = set.or_else(|| ops::current_set(&env, &rex)) else {
                 return manager(env, rex, Launch { action: Some(Action::Delete), ..Launch::default() });
@@ -401,6 +420,30 @@ fn repo_names() -> Vec<CompletionCandidate> {
         .into_iter()
         .map(|p| CompletionCandidate::new(p.name).help(p.source.map(|s| tui::tilde(&s).into())))
         .collect()
+}
+
+fn tidy(orphans: bool, dry_run: bool, yes: bool, format: Format) -> Result<()> {
+    let dir = jj::root(&std::env::current_dir()?)?;
+    let (plan, notes) = ops::tidy_plan(&dir, orphans)?;
+    print_notes(notes);
+    if format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&plan)?);
+    } else {
+        for l in &plan.landed {
+            println!("landed  {}{}", l.name, l.remotes.iter().map(|r| format!(" @{r}")).collect::<String>());
+        }
+        for o in &plan.orphans {
+            println!("orphan  {o}");
+        }
+    }
+    if plan.is_empty() {
+        console::note("nothing to tidy");
+        return Ok(());
+    }
+    if dry_run || (!yes && !confirm("Delete these bookmarks (and abandon the orphans)? [y/N] ")) {
+        return Ok(());
+    }
+    Ok(print_notes(ops::tidy(&dir, &plan)))
 }
 
 fn named_or_current(env: &Env, rex: &Rex, set: Option<String>) -> Result<String> {

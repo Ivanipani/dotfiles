@@ -40,3 +40,11 @@ private-commits = "description(glob:'wip:*') | description(glob:'private:*') | b
 
 [remotes.origin]
 auto-track-bookmarks = "*"
+
+# Views over the revsets of conf.d/flight.toml.
+[aliases]
+flight = ["log", "-r", "flight()"]
+landed = ["bookmark", "list", "-r", "landed()"]
+orphans = ["log", "-r", "orphaned()"]
+# Delete landed bookmarks here and on their remotes; --orphans also abandons orphaned work.
+tidy = ["util", "exec", "--", "rex-workspace", "tidy"]

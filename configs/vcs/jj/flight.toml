@@ -1,0 +1,57 @@
+# Where work stands: in flight, behind trunk, local only, orphaned, landed.
+# jj loads it from conf.d; rex-workspace embeds it, so both read work the same way.
+# No [aliases] here: jj ignores command aliases from --config-file (they live in jj-config.toml.j2).
+
+[revset-aliases]
+# Everything something still points at.
+'tips()' = 'bookmarks() | remote_bookmarks() | working_copies()'
+# Work not on trunk yet.
+'inflight()' = 'trunk()..tips()'
+# Bookmarked commits trunk already contains: the bookmarks have nothing left to land.
+'landed()' = '::trunk() & (bookmarks() | remote_bookmarks())'
+# The roots of stacks built on an old trunk.
+'behind()' = 'roots((inflight() & mutable() & ~empty()) ~ trunk()::)'
+# Commits up to `x` that exist only on this machine.
+'unpushed(x)' = '((trunk()..x) & mutable() & ~empty()) ~ ::remote_bookmarks()'
+'unpushed()' = 'unpushed(visible_heads())'
+# Work nothing points at: no bookmark, no remote, no workspace.
+'orphaned()' = 'mutable() ~ ::tips()'
+'orphans()' = 'heads(orphaned() & ~empty())'
+# Trunk, what is in flight or orphaned, and where each of those forks off.
+'flight()' = 'present(@) | trunk() | inflight() | orphaned() | roots(trunk()..(inflight() | orphaned()))-'
+
+[template-aliases]
+'is_trunk_bookmark(b)' = 'b.name() == "main" || b.name() == "master" || b.name() == "trunk"'
+# Where the commit stands, right after its change id so narrow panes (jjui) still show it.
+'format_commit_status(commit)' = '''
+separate(" ",
+  if(commit.contained_in("::trunk()") && commit.local_bookmarks().filter(|b| !is_trunk_bookmark(b)).len() > 0,
+    label("landed", "[landed]")),
+  if(commit.contained_in("behind()"), label("behind", "[behind trunk]")),
+  if(commit.contained_in("unpushed()"), label("unpushed", "[local only]")),
+  if(commit.contained_in("orphaned()") && !commit.empty(), label("orphan", "[orphan]")),
+)
+'''
+# The builtin header with the status moved forward.
+'format_short_commit_header(commit)' = '''
+separate(" ",
+  format_short_change_id_with_change_offset(commit),
+  format_commit_status(commit),
+  format_commit_bookmarks(commit),
+  format_commit_tags(commit),
+  format_commit_working_copies(commit),
+  format_short_signature(commit.author()),
+  format_timestamp(commit_timestamp(commit)),
+  format_short_commit_id(commit.commit_id()),
+  format_commit_labels(commit),
+  if(config("ui.show-cryptographic-signatures").as_boolean(),
+    format_short_cryptographic_signature(commit.signature())
+  ),
+)
+'''
+
+[colors]
+landed = "green"
+behind = "yellow"
+unpushed = "magenta"
+orphan = "red"

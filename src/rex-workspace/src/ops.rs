@@ -425,6 +425,51 @@ pub fn reap(env: &Env, stale_days: i64, prune: bool) -> Result<(Vec<ReapRow>, Ve
     Ok((rows, notes))
 }
 
+/// What `tidy` would clear out of one repository.
+#[derive(Debug, Serialize)]
+pub struct Tidy {
+    pub landed: Vec<jj::Landed>,
+    /// Orphaned commits, when asked for.
+    pub orphans: Vec<String>,
+}
+
+impl Tidy {
+    pub fn is_empty(&self) -> bool {
+        self.landed.is_empty() && self.orphans.is_empty()
+    }
+}
+
+/// Fetch, then find landed bookmarks and, with `orphans`, orphaned commits.
+pub fn tidy_plan(dir: &std::path::Path, orphans: bool) -> Result<(Tidy, Vec<String>)> {
+    let mut notes = vec![];
+    if jj::has_remote(dir)? {
+        if let Err(e) = jj::fetch(dir) {
+            notes.push(format!("fetch failed, using what was fetched before: {e:#}"));
+        }
+    }
+    let orphans = if orphans { jj::orphaned(dir)? } else { vec![] };
+    Ok((Tidy { landed: jj::landed(dir)?, orphans }, notes))
+}
+
+/// Delete the plan's bookmarks here and on their remotes, then abandon its orphans.
+pub fn tidy(dir: &std::path::Path, plan: &Tidy) -> Vec<String> {
+    let mut notes: Vec<String> = plan
+        .landed
+        .iter()
+        .map(|l| match jj::delete_bookmark(dir, &l.name, &l.remotes) {
+            Ok(()) => format!("deleted landed {}", l.name),
+            Err(e) => format!("could not delete {}: {e:#}", l.name),
+        })
+        .collect();
+    if !plan.orphans.is_empty() {
+        notes.push(match jj::abandon_orphaned(dir) {
+            Ok(()) => format!("abandoned {} orphaned commit(s); jj undo brings them back", plan.orphans.len()),
+            Err(e) => format!("could not abandon orphans: {e:#}"),
+        });
+    }
+    notes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -763,6 +808,81 @@ mod tests {
         reap(&env, 14, true).unwrap();
         // THEN
         assert!(!remote_bookmarks(&src).contains("agent/"));
+    }
+
+    /// `remote_set` with `feature` pushed from the workspace, then landed on main from the source.
+    fn landed_feature(tmp: &Path, env: &Env) -> PathBuf {
+        let src = remote_set(tmp, env);
+        commit(&api(env), "a", "feature");
+        jj::jj_ok(&api(env), &["git", "push", "--named", "feature=@-"]).unwrap();
+        run(&src, &["git", "fetch"]);
+        run(&src, &["bookmark", "set", "main", "-r", r#"description(substring:"feature")"#]);
+        run(&src, &["git", "push", "-b", "main"]);
+        src
+    }
+
+    #[test]
+    fn tidy_plan_lists_a_bookmark_trunk_contains() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        landed_feature(tmp.path(), &env);
+        // WHEN
+        let (plan, _) = tidy_plan(&api(&env), false).unwrap();
+        // THEN
+        assert_eq!(plan.landed.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), ["feature"]);
+    }
+
+    #[test]
+    fn tidy_plan_leaves_out_the_trunk_bookmark() {
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        assert!(tidy_plan(&api(&env), false).unwrap().0.landed.is_empty());
+    }
+
+    #[test]
+    fn tidy_plan_leaves_out_a_bookmark_not_on_trunk() {
+        // GIVEN pushed work main has not reached
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "feature");
+        jj::jj_ok(&api(&env), &["git", "push", "--named", "feature=@-"]).unwrap();
+        // WHEN / THEN
+        assert!(tidy_plan(&api(&env), false).unwrap().0.landed.is_empty());
+    }
+
+    #[test]
+    fn tidy_deletes_a_landed_bookmark_from_the_remote() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        let src = landed_feature(tmp.path(), &env);
+        let (plan, _) = tidy_plan(&api(&env), false).unwrap();
+        // WHEN
+        tidy(&api(&env), &plan);
+        // THEN
+        assert!(!remote_bookmarks(&src).contains("feature@origin"));
+    }
+
+    #[test]
+    fn tidy_with_orphans_abandons_work_nothing_points_at() {
+        // GIVEN work walked away from with jj new
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "abandoned path");
+        run(&api(&env), &["new", "main"]);
+        let (plan, _) = tidy_plan(&api(&env), true).unwrap();
+        // WHEN
+        tidy(&api(&env), &plan);
+        // THEN
+        assert!(jj::orphaned(&api(&env)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn tidy_plan_without_orphans_lists_no_orphans() {
+        let (tmp, env) = env_with_repos(&[]);
+        remote_set(tmp.path(), &env);
+        commit(&api(&env), "a", "abandoned path");
+        run(&api(&env), &["new", "main"]);
+        assert!(tidy_plan(&api(&env), false).unwrap().0.orphans.is_empty());
     }
 
     #[test]

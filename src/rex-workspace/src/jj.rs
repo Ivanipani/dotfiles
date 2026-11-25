@@ -1,11 +1,34 @@
 //! Jujutsu calls: workspace lifecycle and per-project status.
 
 use anyhow::{bail, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// The revsets every query here speaks in (`tips()`, `unpushed(x)`, `orphans()`, …), shared with
+/// the user's jj config so `jj flight` and jjui read work the way this tool does.
+const FLIGHT: &str = include_str!("../../../configs/vcs/jj/flight.toml");
+
+/// `FLIGHT` as a file for `--config-file`, named by its content so builds never share a stale one.
+fn flight_config() -> &'static Path {
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::hash::DefaultHasher::new();
+        FLIGHT.hash(&mut h);
+        let path = std::env::temp_dir().join(format!("rex-workspace-flight-{:x}.toml", h.finish()));
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(FLIGHT) {
+            let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+            if std::fs::write(&tmp, FLIGHT).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+        path
+    })
+}
 
 fn jj(dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    Command::new("jj").arg("-R").arg(dir).args(args).output()
+    Command::new("jj").arg("-R").arg(dir).arg("--config-file").arg(flight_config()).args(args).output()
 }
 
 pub(crate) fn jj_ok(dir: &Path, args: &[&str]) -> Result<String> {
@@ -28,7 +51,7 @@ pub fn agent_prefix(ws: &str) -> String {
 }
 
 /// Work on the branch of `@` that no remote holds.
-const STRANDED: &str = "((trunk()..@) & mutable() & ~empty()) ~ ::remote_bookmarks()";
+const STRANDED: &str = "unpushed(@)";
 
 /// The tip of a run of stranded commits.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -133,7 +156,7 @@ pub struct Leftover {
     pub committed: i64,
 }
 
-const LEFTOVERS: &str = r#"remote_bookmarks(glob:"agent/*") | (heads(mutable() & ~empty()) ~ ::(bookmarks() | remote_bookmarks() | working_copies()))"#;
+const LEFTOVERS: &str = r#"remote_bookmarks(glob:"agent/*") | orphans()"#;
 
 const LEFTOVER_TEMPLATE: &str = r#"change_id.shortest(8) ++ "\t" ++ description.first_line() ++ "\t" ++ remote_bookmarks.filter(|b| b.name().starts_with("agent/") && b.remote() != "git").map(|b| b.name() ++ "@" ++ b.remote()).join(" ") ++ "\t" ++ if(self.contained_in("::trunk() ~ root()"), "landed") ++ "\t" ++ committer.timestamp().format("%s") ++ "\n""#;
 
@@ -166,6 +189,85 @@ fn parse_leftovers(line: &str) -> Vec<Leftover> {
 pub fn leftovers(dir: &Path) -> Result<Vec<Leftover>> {
     let out = jj_ok(dir, &["log", "-r", LEFTOVERS, "--no-graph", "-T", LEFTOVER_TEMPLATE])?;
     Ok(out.lines().flat_map(parse_leftovers).collect())
+}
+
+/// The workspace root holding `cwd`: `-R` does not search parents.
+pub fn root(cwd: &Path) -> Result<PathBuf> {
+    let out = Command::new("jj").arg("workspace").arg("root").current_dir(cwd).output()?;
+    if !out.status.success() {
+        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+}
+
+/// Long-lived bookmarks that sit on trunk by design; `flight.keep-bookmarks` (globs) replaces it.
+const KEEP_BOOKMARKS: &[&str] = &["main", "master", "trunk", "develop", "dev", "prod", "production", "staging", "release/*"];
+
+fn glob_match(pattern: &str, name: &str) -> bool {
+    match pattern.split_once('*') {
+        None => pattern == name,
+        Some((head, rest)) => {
+            name.strip_prefix(head).is_some_and(|tail| (0..=tail.len()).any(|i| tail.is_char_boundary(i) && glob_match(rest, &tail[i..])))
+        }
+    }
+}
+
+fn keep_bookmarks(dir: &Path) -> Vec<String> {
+    jj_ok(dir, &["config", "get", "flight.keep-bookmarks"])
+        .ok()
+        .and_then(|s| serde_json::from_str(s.trim()).ok())
+        .unwrap_or_else(|| KEEP_BOOKMARKS.iter().map(|s| s.to_string()).collect())
+}
+
+/// A bookmark with nothing left to land.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Landed {
+    pub name: String,
+    /// The remotes that hold it, its deletion to be pushed there.
+    pub remotes: Vec<String>,
+}
+
+/// Per bookmark whose local target trunk contains: one line for it and one per remote, saying
+/// whether trunk contains that target too, or else, for a target rewritten since (hidden), its change.
+const LANDED_TEMPLATE: &str = r#"if(remote != "git", name ++ "\t" ++ remote ++ "\t" ++ if(normal_target, if(normal_target.contained_in("::trunk()"), "landed", if(normal_target.hidden(), normal_target.change_id()))) ++ "\n")"#;
+
+/// Bookmarks whose every target is on trunk; `superseded` says whether a rewritten change landed.
+fn parse_landed(out: &str, keep: &[String], superseded: impl Fn(&str) -> bool) -> Vec<Landed> {
+    let mut rows: Vec<(Landed, bool)> = vec![];
+    for line in out.lines() {
+        let f: Vec<_> = line.split('\t').collect();
+        let (name, remote, state) = (f[0], f.get(1).copied().unwrap_or_default(), f.get(2).copied().unwrap_or_default());
+        let landed = state == "landed" || (!state.is_empty() && superseded(state));
+        let i = match rows.iter().position(|(l, _)| l.name == name) {
+            Some(i) => i,
+            None => {
+                rows.push((Landed { name: name.into(), remotes: vec![] }, true));
+                rows.len() - 1
+            }
+        };
+        rows[i].1 &= landed;
+        if !remote.is_empty() {
+            rows[i].0.remotes.push(remote.into());
+        }
+    }
+    rows.into_iter().filter(|(l, ok)| *ok && !keep.iter().any(|k| glob_match(k, &l.name))).map(|(l, _)| l).collect()
+}
+
+/// Bookmarks trunk already holds, here and on every remote, apart from the long-lived ones.
+pub fn landed(dir: &Path) -> Result<Vec<Landed>> {
+    let out = jj_ok(dir, &["bookmark", "list", "--all-remotes", "-r", "landed()", "-T", LANDED_TEMPLATE])?;
+    let superseded = |change: &str| count(dir, &format!("present(change_id({change})) & ::trunk()")).is_ok_and(|n| n > 0);
+    Ok(parse_landed(&out, &keep_bookmarks(dir), superseded))
+}
+
+/// Orphaned commits (`orphaned()`), newest first, as `change description` lines.
+pub fn orphaned(dir: &Path) -> Result<Vec<String>> {
+    let template = r#"change_id.shortest(8) ++ " " ++ if(description, description.first_line(), if(empty, "(empty)", "(no description)")) ++ "\n""#;
+    Ok(jj_ok(dir, &["log", "-r", "orphaned()", "--no-graph", "-T", template])?.lines().map(String::from).collect())
+}
+
+pub fn abandon_orphaned(dir: &Path) -> Result<()> {
+    jj_ok(dir, &["abandon", "orphaned()"]).map(drop)
 }
 
 /// Delete a bookmark here and on every remote that holds it.
@@ -314,6 +416,57 @@ mod tests {
         let rows = parse_leftovers("abcd\tfix\tagent/x/a@origin agent/x/a@fork\t\t100");
         // THEN
         assert_eq!(rows[0].remotes, ["origin", "fork"]);
+    }
+
+    fn names(l: Vec<Landed>) -> Vec<String> {
+        l.into_iter().map(|l| l.name).collect()
+    }
+
+    #[test]
+    fn parse_landed_keeps_a_bookmark_landed_everywhere() {
+        let out = "feat\t\tlanded\nfeat\torigin\tlanded\n";
+        assert_eq!(names(parse_landed(out, &[], |_| false)), ["feat"]);
+    }
+
+    #[test]
+    fn parse_landed_gathers_the_remotes_to_push_the_deletion_to() {
+        let out = "feat\t\tlanded\nfeat\torigin\tlanded\nfeat\tfork\tlanded\n";
+        assert_eq!(parse_landed(out, &[], |_| false)[0].remotes, ["origin", "fork"]);
+    }
+
+    #[test]
+    fn parse_landed_when_a_remote_is_ahead_of_trunk_drops_the_bookmark() {
+        // GIVEN the remote holds a visible commit trunk does not
+        let out = "feat\t\tlanded\nfeat\torigin\t\n";
+        assert!(parse_landed(out, &[], |_| true).is_empty());
+    }
+
+    #[test]
+    fn parse_landed_when_the_remote_holds_a_rewrite_of_a_landed_change_keeps_the_bookmark() {
+        let out = "feat\t\tlanded\nfeat\torigin\tabcdef\n";
+        assert_eq!(names(parse_landed(out, &[], |c| c == "abcdef")), ["feat"]);
+    }
+
+    #[test]
+    fn parse_landed_when_the_rewritten_change_never_landed_drops_the_bookmark() {
+        let out = "feat\t\tlanded\nfeat\torigin\tabcdef\n";
+        assert!(parse_landed(out, &[], |_| false).is_empty());
+    }
+
+    #[test]
+    fn parse_landed_leaves_out_kept_bookmarks() {
+        let out = "release/1.2\t\tlanded\nprod\t\tlanded\n";
+        assert!(parse_landed(out, &["prod".into(), "release/*".into()], |_| false).is_empty());
+    }
+
+    #[test]
+    fn glob_match_with_a_star_matches_any_suffix() {
+        assert!(glob_match("release/*", "release/1.2"));
+    }
+
+    #[test]
+    fn glob_match_without_a_star_needs_the_whole_name() {
+        assert!(!glob_match("main", "main-old"));
     }
 
     #[test]

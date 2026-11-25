@@ -1,2 +1,91 @@
 [preview]
 position = "bottom"          # auto | right | bottom
+
+[revisions]
+# Revsets and labels come from jj's conf.d/flight.toml.
+revset = "flight()"
+
+# Views: w(here) then f(light), b(ehind), u(npushed), o(rphans), l(anded), a(ll: jj's default log).
+[[actions]]
+name = "view-flight"
+lua = 'revset.set("flight()")'
+
+[[actions]]
+name = "view-behind"
+lua = 'revset.set("trunk() | behind()::")'
+
+[[actions]]
+name = "view-unpushed"
+lua = 'revset.set("trunk() | unpushed()")'
+
+[[actions]]
+name = "view-orphans"
+lua = 'revset.set("trunk() | orphaned()")'
+
+[[actions]]
+name = "view-landed"
+lua = 'revset.set("trunk() | landed()")'
+
+[[actions]]
+name = "view-all"
+lua = 'revset.set("builtin_log()")'
+
+# Rebase the selected stack onto trunk.
+[[actions]]
+name = "rebase-onto-trunk"
+lua = '''jj_async("rebase", "-b", context.change_id(), "-d", "trunk()")
+revisions.refresh()'''
+
+# Fetch, then delete landed bookmarks here and on the remote (asks first).
+[[actions]]
+name = "tidy"
+lua = '''exec_shell("jj tidy")
+revisions.refresh()'''
+
+[[bindings]]
+action = "view-flight"
+seq = ["w", "f"]
+scope = "revisions"
+desc = "in flight"
+
+[[bindings]]
+action = "view-behind"
+seq = ["w", "b"]
+scope = "revisions"
+desc = "behind trunk"
+
+[[bindings]]
+action = "view-unpushed"
+seq = ["w", "u"]
+scope = "revisions"
+desc = "local only"
+
+[[bindings]]
+action = "view-orphans"
+seq = ["w", "o"]
+scope = "revisions"
+desc = "orphans"
+
+[[bindings]]
+action = "view-landed"
+seq = ["w", "l"]
+scope = "revisions"
+desc = "landed"
+
+[[bindings]]
+action = "view-all"
+seq = ["w", "a"]
+scope = "revisions"
+desc = "jj default log"
+
+[[bindings]]
+action = "rebase-onto-trunk"
+seq = ["w", "r"]
+scope = "revisions"
+desc = "rebase stack onto trunk"
+
+[[bindings]]
+action = "tidy"
+seq = ["w", "t"]
+scope = "revisions"
+desc = "tidy landed bookmarks"
