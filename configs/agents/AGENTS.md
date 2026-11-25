@@ -14,6 +14,9 @@ Granularity: delegate a whole unit of work, i.e. babysitting a process (deploy, 
 
 - `implementer` (sonnet): implementing a part of a feature from an agreed plan, with its tests.
 - `ops-runner` (haiku): babysitting a process, plus merging, triggering deploys, and reading logs.
+- `homelab-debugger` (opus): read-only diagnosis of unhealthy/failing homelab components (k3s, Flux, Argo, Tekton, DNS/TLS). Proposes fixes, never applies them.
+- `toolsmith` (sonnet): how to get more out of Docker, Pants, Kubernetes, Argo, Ansible, and custom CLIs like reek; finds underused features and gaps.
+- `simplifier` (opus): read-only review for tech debt, ill-fitting abstractions, and needless complexity; proposes simpler designs.
 - Searching/reading code: `Explore` (haiku) or `model: "haiku"`.
 - Always set the model explicitly. Never use opus/fable for a subagent unless the task is design, root-causing a hard bug, or review.
 - Subagents start cold: give them the plan, paths, and success condition, and ask for a brief report.
