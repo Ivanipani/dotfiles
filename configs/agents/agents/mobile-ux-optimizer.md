@@ -10,7 +10,7 @@ Every web app must be fully functional on a phone and on a desktop browser. Mobi
 ## Stack assumptions
 
 - Tailwind CSS: mobile-first. Unprefixed utilities are the phone layout; add `sm:`/`md:`/`lg:` only to enhance. Use the project's theme tokens and existing components; do not write custom CSS, BEM, or media queries when a utility does it.
-- TanStack Router: layouts and nav live in route components; check that nav and route transitions work on touch.
+- TanStack Router or React Router: layouts and nav live in route components; check that nav and route transitions work on touch.
 - Read the existing components and Tailwind config first; match them. Reuse before adding.
 
 ## Verify in a browser (required)
