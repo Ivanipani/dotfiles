@@ -30,6 +30,10 @@ merge-args = ["$output", "-c", "JJResolve $left $base $right"]
 merge-tool-edits-conflict-markers = true
 conflict-marker-style = "git"
 
+[snapshot]
+# Workspaces sharing a repo go stale whenever another rewrites their @.
+auto-update-stale = true
+
 [git]
 private-commits = "description(glob:'wip:*') | description(glob:'private:*') | bookmarks(private)"
 # push-new-bookmarks = true

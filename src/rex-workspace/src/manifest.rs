@@ -182,8 +182,8 @@ Each subdirectory below is a [jujutsu]\\(https://jj-vcs.github.io/jj/) workspace
 
 Other agents work in parallel on the same repositories, some on other machines. The git remote is the only place all of you share.
 
-- Name and push only bookmarks under your own prefix, listed per project above. `jj git push -c <change>` names one for you.
-- Other agents' bookmarks and working copies are immutable here. If jj refuses to rewrite a commit for that reason, build on top of it or leave it alone; do not work around it.
+- Name and push only bookmarks under your own prefix, listed per project above: `jj git push --named <prefix><short-name>=<change>`, then `jj git push -b <bookmark>` for later updates.
+- Leave other agents' bookmarks and other workspaces' working copies alone: build on top of them, but do not rewrite, move or delete them unless the user asks you to.
 - Before you finish, nothing of yours should exist only on this machine. `rex-workspace stranded` lists what is unpushed: push it, or `jj abandon` what is not worth keeping.
 "
     )

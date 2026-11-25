@@ -191,7 +191,7 @@ enum Command {
     /// List work in a set's workspaces that exists only on this machine.
     ///
     /// Each row is the tip of a run of commits on the branch of `@` that no remote bookmark holds.
-    /// Push it under the workspace's own prefix with `jj git push -c <change>`, or abandon it.
+    /// Push it under the workspace's own prefix with `jj git push --named <prefix><name>=<change>`, or abandon it.
     /// Projects without a remote are left out.
     Stranded {
         /// Set to check (default: the one this runs in)

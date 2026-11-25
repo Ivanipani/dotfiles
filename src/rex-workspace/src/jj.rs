@@ -19,13 +19,7 @@ pub(crate) fn jj_ok(dir: &Path, args: &[&str]) -> Result<String> {
 pub fn workspace_add(source: &str, name: &str, dir: &Path) -> Result<()> {
     // Other workspaces rewrite the source's commit; `workspace add` refuses a stale source.
     let _ = jj(Path::new(source), &["workspace", "update-stale"]);
-    jj_ok(Path::new(source), &["workspace", "add", "--name", name, &dir.to_string_lossy()])?;
-    set_config(dir, "snapshot.auto-update-stale", "true")?;
-    scope_to_agent(dir, name)
-}
-
-fn set_config(dir: &Path, key: &str, toml_value: &str) -> Result<()> {
-    jj_ok(dir, &["config", "set", "--workspace", key, toml_value]).map(drop)
+    jj_ok(Path::new(source), &["workspace", "add", "--name", name, &dir.to_string_lossy()]).map(drop)
 }
 
 /// The bookmarks the agent of workspace `ws` owns: the only ones it creates, moves and pushes.
@@ -33,25 +27,27 @@ pub fn agent_prefix(ws: &str) -> String {
     format!("agent/{ws}/")
 }
 
-/// jj's own immutable commits, plus other agents' bookmarks and every other workspace's `@`.
-fn immutable_heads(ws: &str) -> String {
-    let mine = agent_prefix(ws);
-    format!(
-        r#"builtin_immutable_heads() | ((bookmarks(glob:"agent/*") | remote_bookmarks(glob:"agent/*") | working_copies()) ~ (bookmarks(glob:"{mine}*") | remote_bookmarks(glob:"{mine}*") | @))"#
-    )
-}
+/// The keys earlier versions set in each workspace's jj config.
+const OWN_CONFIG: [&str; 3] = ["snapshot.auto-update-stale", r#"revset-aliases."immutable_heads()""#, "templates.git_push_bookmark"];
 
-/// Keep the agent of `ws` off other agents' work, and name its `jj git push -c` bookmarks under its prefix.
-pub fn scope_to_agent(dir: &Path, ws: &str) -> Result<()> {
-    // TOML literal strings: the values hold double quotes, and names never hold a single quote.
-    set_config(dir, r#"revset-aliases."immutable_heads()""#, &format!("'{}'", immutable_heads(ws)))?;
-    set_config(dir, "templates.git_push_bookmark", &format!("'\"{}\" ++ {}'", agent_prefix(ws), push_slug()))
-}
-
-/// The first three words of the commit's subject, without a conventional `type(scope):`, or its change id.
-fn push_slug() -> String {
-    let words = r#"description.first_line().lower().replace(regex:"^[a-z]+(\\([^)]*\\))?!?:", "").replace(regex:"[^a-z0-9]+", "-").replace(regex:"^-+", "").replace(regex:"^([a-z0-9]+(-[a-z0-9]+){0,2}).*$", "$1")"#;
-    format!("if({words}, {words}, change_id.short())")
+/// Take the keys earlier versions set out of the jj config of the workspace at `dir`, which jj
+/// keeps outside it, in `~/.config/jj/workspaces/<id>/`; the file goes once nothing else is in it.
+pub fn drop_workspace_config(dir: &Path) -> Result<()> {
+    let file = std::path::PathBuf::from(jj_ok(dir, &["config", "path", "--workspace"])?.trim());
+    if !file.exists() {
+        return Ok(());
+    }
+    for key in OWN_CONFIG {
+        // Fails only when the key is not set.
+        let _ = jj(dir, &["config", "unset", "--workspace", key]);
+    }
+    if jj_ok(dir, &["config", "list", "--workspace"])?.trim().is_empty() {
+        std::fs::remove_file(&file)?;
+        if let Some(parent) = file.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+    Ok(())
 }
 
 /// Work on the branch of `@` that no remote holds.
@@ -141,6 +137,7 @@ pub fn forget(dir: &Path, ws: &str) -> Result<Vec<String>> {
         return Ok(vec![]);
     }
     let notes = rescue(dir, ws)?;
+    drop_workspace_config(dir)?;
     jj_ok(dir, &["workspace", "forget"])?;
     Ok(notes)
 }
@@ -347,10 +344,5 @@ mod tests {
     fn parse_leftovers_reads_landed_and_the_commit_time() {
         let row = &parse_leftovers("abcd\tfix\tagent/x/a@origin\tlanded\t100\n")[0];
         assert_eq!((row.landed, row.committed), (true, 100));
-    }
-
-    #[test]
-    fn immutable_heads_exempts_the_workspaces_own_bookmarks() {
-        assert!(immutable_heads("demo").contains(r#"~ (bookmarks(glob:"agent/demo/*")"#));
     }
 }

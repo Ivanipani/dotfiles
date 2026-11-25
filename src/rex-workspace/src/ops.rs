@@ -136,7 +136,7 @@ pub fn open(env: &Env, rex: &Rex, set: &str) -> Result<Vec<String>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
-    let mut notes = scope_to_agents(env, &manifest);
+    let mut notes = drop_workspace_configs(env, &manifest);
     let id = match rex.find(&session_label(set)) {
         Some(id) => {
             if park::is_paused(env, set) {
@@ -271,7 +271,7 @@ pub fn sync(env: &Env, set: &str) -> Result<Vec<SyncReport>> {
     if manifest.projects.is_empty() {
         bail!("no set named {set}");
     }
-    scope_to_agents(env, &manifest);
+    drop_workspace_configs(env, &manifest);
     let mut repos: Vec<(String, Vec<String>)> = vec![];
     for p in manifest.projects {
         let key = p.source.clone().unwrap_or_else(|| p.name.clone());
@@ -314,14 +314,14 @@ pub fn require_current_set(env: &Env, rex: &Rex) -> Result<String> {
     current_set(env, rex).ok_or_else(|| anyhow!("no set given, and neither inside a set's directory nor a ws- session"))
 }
 
-/// Backfill the per-agent jj config into workspaces created before it existed; failures are notes.
-fn scope_to_agents(env: &Env, manifest: &Manifest) -> Vec<String> {
+/// Clean the jj config earlier versions wrote out of the set's workspaces; failures are notes.
+fn drop_workspace_configs(env: &Env, manifest: &Manifest) -> Vec<String> {
     manifest
         .projects
         .iter()
         .filter_map(|p| {
             let dir = env.set_dir(&manifest.name).join(&p.name);
-            jj::scope_to_agent(&dir, &p.workspace_name(&manifest.name)).err().map(|e| format!("{}: {e:#}", p.name))
+            jj::drop_workspace_config(&dir).err().map(|e| format!("{}: {e:#}", p.name))
         })
         .collect()
 }
@@ -645,65 +645,43 @@ mod tests {
         env.set_dir("demo").join("api")
     }
 
+    fn workspace_config(dir: &Path) -> PathBuf {
+        PathBuf::from(jj::jj_ok(dir, &["config", "path", "--workspace"]).unwrap().trim())
+    }
+
     #[test]
-    fn add_makes_another_workspaces_working_copy_immutable() {
-        // GIVEN a set workspace and the source's own working copy
+    fn add_writes_no_workspace_jj_config() {
+        // GIVEN
+        let (tmp, env) = env_with_repos(&[]);
+        // WHEN
+        remote_set(tmp.path(), &env);
+        // THEN
+        assert!(!workspace_config(&api(&env)).exists());
+    }
+
+    #[test]
+    fn sync_deletes_a_workspace_config_holding_only_keys_rex_workspace_set() {
+        // GIVEN a workspace configured by an earlier version
         let (tmp, env) = env_with_repos(&[]);
         remote_set(tmp.path(), &env);
-        // WHEN the agent tries to rewrite the source's @
-        let out = std::process::Command::new("jj").args(["describe", "-r", "default@", "-m", "x"]).current_dir(api(&env)).output().unwrap();
-        // THEN
-        assert!(String::from_utf8_lossy(&out.stderr).contains("immutable"));
-    }
-
-    #[test]
-    fn add_makes_another_agents_bookmark_immutable() {
-        // GIVEN another agent's bookmark in the shared repository
-        let (tmp, env) = env_with_repos(&[]);
-        let src = remote_set(tmp.path(), &env);
-        commit(&src, "theirs", "their work");
-        run(&src, &["bookmark", "create", "agent/other/x", "-r", "@-"]);
+        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"]).unwrap();
         // WHEN
-        let out = std::process::Command::new("jj").args(["describe", "-r", "agent/other/x", "-m", "mine now"]).current_dir(api(&env)).output().unwrap();
+        sync(&env, "demo").unwrap();
         // THEN
-        assert!(String::from_utf8_lossy(&out.stderr).contains("immutable"));
+        assert!(!workspace_config(&api(&env)).exists());
     }
 
     #[test]
-    fn push_of_a_change_names_the_bookmark_after_its_subject_without_the_conventional_prefix() {
+    fn sync_keeps_workspace_config_keys_rex_workspace_did_not_set() {
         // GIVEN
         let (tmp, env) = env_with_repos(&[]);
-        let src = remote_set(tmp.path(), &env);
-        commit(&api(&env), "a", "feat(fleet)!: Show agents' status");
+        remote_set(tmp.path(), &env);
+        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "snapshot.auto-update-stale", "true"]).unwrap();
+        jj::jj_ok(&api(&env), &["config", "set", "--workspace", "ui.color", "never"]).unwrap();
         // WHEN
-        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        sync(&env, "demo").unwrap();
         // THEN
-        assert!(remote_bookmarks(&src).contains("agent/demo/show-agents-status@origin"));
-    }
-
-    #[test]
-    fn push_of_a_long_subject_names_the_bookmark_after_its_first_three_words() {
-        // GIVEN
-        let (tmp, env) = env_with_repos(&[]);
-        let src = remote_set(tmp.path(), &env);
-        commit(&api(&env), "a", "name pushed agent bookmarks after the change's description");
-        // WHEN
-        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
-        // THEN
-        assert!(remote_bookmarks(&src).contains("agent/demo/name-pushed-agent@origin"));
-    }
-
-    #[test]
-    fn push_of_an_undescribed_change_names_the_bookmark_after_its_change_id() {
-        // GIVEN
-        let (tmp, env) = env_with_repos(&[]);
-        let src = remote_set(tmp.path(), &env);
-        commit(&api(&env), "a", "");
-        let change = jj::jj_ok(&api(&env), &["log", "-r", "@-", "--no-graph", "-T", "change_id.short()"]).unwrap();
-        // WHEN
-        jj::jj_ok(&api(&env), &["git", "push", "--allow-empty-description", "-c", "@-"]).unwrap();
-        // THEN
-        assert!(remote_bookmarks(&src).contains(&format!("agent/demo/{change}@origin")));
+        assert_eq!(jj::jj_ok(&api(&env), &["config", "list", "--workspace"]).unwrap().trim(), r#"ui.color = "never""#);
     }
 
     #[test]
@@ -737,7 +715,7 @@ mod tests {
         let (tmp, env) = env_with_repos(&[]);
         remote_set(tmp.path(), &env);
         commit(&api(&env), "a", "feature");
-        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        jj::jj_ok(&api(&env), &["git", "push", "--named", "agent/demo/feature=@-"]).unwrap();
         // WHEN / THEN
         assert!(stranded(&env, "demo").unwrap().is_empty());
     }
@@ -799,7 +777,7 @@ mod tests {
         let (tmp, env) = env_with_repos(&[]);
         let src = remote_set(tmp.path(), &env);
         commit(&api(&env), "a", "feature");
-        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        jj::jj_ok(&api(&env), &["git", "push", "--named", "agent/demo/feature=@-"]).unwrap();
         run(&src, &["git", "fetch"]);
         run(&src, &["bookmark", "set", "main", "-r", r#"description(substring:"feature")"#]);
         run(&src, &["git", "push", "-b", "main"]);
@@ -815,7 +793,7 @@ mod tests {
         let (tmp, env) = env_with_repos(&[]);
         let src = remote_set(tmp.path(), &env);
         commit(&api(&env), "a", "feature");
-        jj::jj_ok(&api(&env), &["git", "push", "-c", "@-"]).unwrap();
+        jj::jj_ok(&api(&env), &["git", "push", "--named", "agent/demo/feature=@-"]).unwrap();
         run(&src, &["git", "fetch"]);
         run(&src, &["bookmark", "set", "main", "-r", r#"description(substring:"feature")"#]);
         run(&src, &["git", "push", "-b", "main"]);
