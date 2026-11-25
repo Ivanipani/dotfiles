@@ -34,6 +34,7 @@ else
 		require("plugins.lsp"),
 		require("plugins.lualine"),
 		require("plugins.go"),
+		require("plugins.helm"),
 		require("plugins.local-highlight"),
 		require("plugins.dashboard"),
 		require("plugins.neo-tree"),
