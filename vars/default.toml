@@ -54,6 +54,14 @@ allowed_commands = [
     ["k3s", "kubectl"],
 ]
 
+[conveyor_belt]
+# Repos whose `main` conveyor-belt owns (owner/name): agents may not push it there.
+# Empty means "no belt on this machine" and the module is off.
+repos = []
+# Defaults for `cb` (CB_CONTEXT, CB_NAMESPACE); empty leaves them unset.
+context = ""
+namespace = ""
+
 [claude]
 # Claude Code writes its auto-mode block itself, and it names whatever repo it
 # was pointed at — internal hosts, secret paths. This repo is public, so the

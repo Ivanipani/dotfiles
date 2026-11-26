@@ -1,0 +1,5 @@
+# Rendered by `dot` from conveyor-belt/templates/repos.j2: edit `conveyor_belt.repos` in vars, then `dot apply`.
+# Repos whose `main` conveyor-belt owns, one owner/name per line (read by the agents' cb-guard hook).
+{% for repo in v.conveyor_belt.repos %}
+{{ repo }}
+{% endfor %}

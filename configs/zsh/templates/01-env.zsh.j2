@@ -13,6 +13,12 @@ export GOPATH="$HOME/go"
 {% if v.shell.kubeconfigs %}
 export KUBECONFIG="{{ v.shell.kubeconfigs | join(':') }}"
 {% endif %}
+{% if v.conveyor_belt.context %}
+export CB_CONTEXT="{{ v.conveyor_belt.context }}"
+{% endif %}
+{% if v.conveyor_belt.namespace %}
+export CB_NAMESPACE="{{ v.conveyor_belt.namespace }}"
+{% endif %}
 
 # Nix (Determinate). /etc/zshrc adds these, but a PATH built with
 # path_mode = "replace" is rebuilt from scratch afterwards and drops them.

@@ -13,6 +13,8 @@ codex	dir	mkdir -p $HOME/.agents
 codex	symlink	ln -s $REPO/configs/agents/skills $HOME/.agents/skills
 codex	render	render codex-hooks.json.j2 -> $HOME/.codex/hooks.json (symlink)
 codex	render	render codex.rules.j2 -> $HOME/.codex/rules/dot.rules (symlink)
+conveyor-belt	dir	mkdir -p $HOME/.config/conveyor-belt
+conveyor-belt	render	render repos.j2 -> $HOME/.config/conveyor-belt/repos (symlink)
 nushell	dir	mkdir -p $HOME/Library/Application Support/nushell
 nushell	dir	mkdir -p $HOME/Library/Application Support/nushell/scripts
 nushell	dir	mkdir -p $HOME/Library/Application Support/nushell/lib

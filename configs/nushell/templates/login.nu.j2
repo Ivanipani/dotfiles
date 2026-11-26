@@ -45,6 +45,12 @@ $env.KUBECONFIG = ([
 {% endfor %}
 ] | str join ":")
 {% endif %}
+{% if v.conveyor_belt.context %}
+$env.CB_CONTEXT = "{{ v.conveyor_belt.context }}"
+{% endif %}
+{% if v.conveyor_belt.namespace %}
+$env.CB_NAMESPACE = "{{ v.conveyor_belt.namespace }}"
+{% endif %}
 
 # Nix (Determinate). The installer only writes zsh/bash/fish integration, so
 # nushell needs the equivalent of profile.d/nix-daemon.sh by hand. Self-guarding,

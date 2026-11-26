@@ -45,6 +45,14 @@ Existing Claude links are repointed by `dot apply claude`; locally edited
 settings are reported for review using the usual `dot diff` / `--force` workflow.
 The `claude.auto_mode` local variable remains unchanged.
 
+## conveyor-belt
+
+The `conveyor-belt` module renders `~/.config/conveyor-belt/repos` from `conveyor_belt.repos`:
+the repos whose `main` conveyor-belt owns, which the agents' `cb-guard` hook reads. The zsh and
+nushell modules export `CB_CONTEXT` and `CB_NAMESPACE` from `conveyor_belt.context` and
+`conveyor_belt.namespace`, so `cb` needs no `--context`. With no repos (the default, and the
+work profile) the module is off.
+
 ## Quick start
 
 Only `uv` is required. Everything else bootstraps from it.
