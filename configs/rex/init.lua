@@ -139,7 +139,7 @@ rex.bind("scroll/shift+n", step("scroll_find_previous", "Prev match", "client.fi
 
 -- Floats --------------------------------------------------------------------
 -- Global keys (locked and command mode):
---   ctrl+a w workspaces (shared session)   ctrl+a u processes (rex-manager)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
+--   ctrl+a w workspaces (shared session)   ctrl+a u processes, ctrl+a c cb (rex-manager)   alt+g jjui   alt+t scratch shell   alt+a claude   alt+c codex
 --   alt+w hide/show all floats
 --   alt+, / alt+.  focus the previous / next float
 -- Float mode (ctrl+a, then l): n new, f float pane, e tile float, x close,
@@ -307,7 +307,7 @@ for key, action in pairs({
 end
 
 -- Manager TUIs (rex-workspace): one shared "rex-manager" session hosts them for the
--- whole app, one tab each: "workspaces" (ctrl+a w) and "processes" (ctrl+a u). The
+-- whole app, one tab each: "workspaces" (ctrl+a w), "processes" (ctrl+a u) and "cb" (ctrl+a c). The
 -- key jumps there from any session; the same key (or q in the TUI) returns to where
 -- you were. The session and tabs are created on first use.
 section = "Command"
@@ -320,6 +320,7 @@ local came_from -- session to return to; lost on config reload, then we fall bac
 local TABS = {
   workspaces = "rex-workspace",
   processes = "rex-workspace procs",
+  cb = "cb",
 }
 
 local function tab_layout(command)
@@ -420,6 +421,7 @@ local function hub_key(key, name, title, tab)
 end
 hub_key("w", TOGGLE, "Workspaces", "workspaces")
 hub_key("u", "processes_toggle", "Processes", "processes")
+hub_key("c", "cb_toggle", "cb", "cb")
 rex.action{ name = TOGGLE_PLAIN, title = "Leave rex-manager (no mode exit)", category = section, run = leave_hub }
 section = "Float"
 
