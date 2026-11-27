@@ -17,6 +17,8 @@
 # Work nothing points at: no bookmark, no remote, no workspace.
 'orphaned()' = 'mutable() ~ ::tips()'
 'orphans()' = 'heads(orphaned() & ~empty())'
+# Changes handed to conveyor-belt (`cb submit` bookmarks them cb/<you>/<id>) and not on trunk yet.
+'submitted()' = '(bookmarks(glob:"cb/*") | remote_bookmarks(glob:"cb/*")) ~ ::trunk()'
 # Trunk, what is in flight or orphaned, and where each of those forks off.
 'flight()' = 'present(@) | trunk() | inflight() | orphaned() | roots(trunk()..(inflight() | orphaned()))-'
 
@@ -25,7 +27,9 @@
 # Where the commit stands, right after its change id so narrow panes (jjui) still show it.
 'format_commit_status(commit)' = '''
 separate(" ",
-  if(commit.contained_in("::trunk()") && commit.local_bookmarks().filter(|b| !is_trunk_bookmark(b)).len() > 0,
+  if(commit.contained_in("trunk()"), label("trunk", " TRUNK ")),
+  if(commit.contained_in("submitted()"), label("submitted", "[submitted]")),
+  if(commit.contained_in("::trunk()") && !commit.contained_in("trunk()") && commit.local_bookmarks().filter(|b| !is_trunk_bookmark(b)).len() > 0,
     label("landed", "[landed]")),
   if(commit.contained_in("behind()"), label("behind", "[behind trunk]")),
   if(commit.contained_in("unpushed()"), label("unpushed", "[local only]")),
@@ -51,6 +55,8 @@ separate(" ",
 '''
 
 [colors]
+trunk = { fg = "black", bg = "green", bold = true }
+submitted = "cyan"
 landed = "green"
 behind = "yellow"
 unpushed = "magenta"

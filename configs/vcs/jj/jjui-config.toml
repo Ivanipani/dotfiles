@@ -5,7 +5,7 @@ position = "bottom"          # auto | right | bottom
 # Revsets and labels come from jj's conf.d/flight.toml.
 revset = "flight()"
 
-# Views: w(here) then f(light), b(ehind), u(npushed), o(rphans), l(anded), a(ll: jj's default log).
+# Views: w(here) then f(light), b(ehind), s(ubmitted), u(npushed), o(rphans), l(anded), a(ll: jj's default log).
 [[actions]]
 name = "view-flight"
 lua = 'revset.set("flight()")'
@@ -25,6 +25,10 @@ lua = 'revset.set("trunk() | orphaned()")'
 [[actions]]
 name = "view-landed"
 lua = 'revset.set("trunk() | landed()")'
+
+[[actions]]
+name = "view-submitted"
+lua = 'revset.set("trunk() | submitted()")'
 
 [[actions]]
 name = "view-all"
@@ -71,6 +75,12 @@ action = "view-landed"
 seq = ["w", "l"]
 scope = "revisions"
 desc = "landed"
+
+[[bindings]]
+action = "view-submitted"
+seq = ["w", "s"]
+scope = "revisions"
+desc = "submitted to conveyor-belt"
 
 [[bindings]]
 action = "view-all"
