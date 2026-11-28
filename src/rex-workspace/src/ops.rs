@@ -613,6 +613,23 @@ mod tests {
     }
 
     #[test]
+    fn workspace_add_when_remote_trunk_moved_starts_the_workspace_on_the_new_trunk() {
+        // GIVEN origin's main advanced by another clone
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        let other = tmp.path().join("other");
+        run(tmp.path(), &["git", "clone", &tmp.path().join("origin.git").to_string_lossy(), &other.to_string_lossy()]);
+        run(&other, &["new", "main", "-m", "upstream"]);
+        run(&other, &["bookmark", "set", "main", "-r", "@"]);
+        run(&other, &["git", "push", "-b", "main"]);
+        let dir = tmp.path().join("second");
+        // WHEN
+        jj::workspace_add(&src.to_string_lossy(), "second", &dir).unwrap();
+        // THEN
+        assert_eq!(run(&dir, &["log", "-r", "@-", "--no-graph", "-T", "description.first_line()"]).trim(), "upstream");
+    }
+
+    #[test]
     fn sync_when_trunk_moved_rebases_the_workspace_onto_it() {
         // GIVEN
         let (tmp, env) = env_with_repos(&[]);

@@ -43,6 +43,8 @@ pub fn workspace_add(source: &str, name: &str, dir: &Path) -> Result<()> {
     // Other workspaces rewrite the source's commit; `workspace add` refuses a stale source.
     let _ = jj(Path::new(source), &["workspace", "update-stale"]);
     let src = Path::new(source);
+    // Best effort: offline or without a remote, trunk stays as last fetched.
+    let _ = fetch(src);
     let dir = dir.to_string_lossy();
     let mut args = vec!["workspace", "add", "--name", name];
     // Start from trunk, unless the repo has none (trunk() is then the root commit).
