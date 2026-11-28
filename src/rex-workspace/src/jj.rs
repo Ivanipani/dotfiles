@@ -42,7 +42,15 @@ pub(crate) fn jj_ok(dir: &Path, args: &[&str]) -> Result<String> {
 pub fn workspace_add(source: &str, name: &str, dir: &Path) -> Result<()> {
     // Other workspaces rewrite the source's commit; `workspace add` refuses a stale source.
     let _ = jj(Path::new(source), &["workspace", "update-stale"]);
-    jj_ok(Path::new(source), &["workspace", "add", "--name", name, &dir.to_string_lossy()]).map(drop)
+    let src = Path::new(source);
+    let dir = dir.to_string_lossy();
+    let mut args = vec!["workspace", "add", "--name", name];
+    // Start from trunk, unless the repo has none (trunk() is then the root commit).
+    if count(src, "trunk() ~ root()").is_ok_and(|n| n > 0) {
+        args.extend(["-r", "trunk()"]);
+    }
+    args.push(&dir);
+    jj_ok(src, &args).map(drop)
 }
 
 /// The bookmarks the agent of workspace `ws` owns: the only ones it creates, moves and pushes.

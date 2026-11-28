@@ -599,6 +599,20 @@ mod tests {
     }
 
     #[test]
+    fn workspace_add_when_source_is_off_trunk_starts_the_workspace_on_trunk() {
+        // GIVEN a source whose working copy sits on unpushed work
+        let (tmp, env) = env_with_repos(&[]);
+        let src = remote_set(tmp.path(), &env);
+        run(&src, &["describe", "-m", "wip"]);
+        run(&src, &["new"]);
+        let dir = tmp.path().join("second");
+        // WHEN
+        jj::workspace_add(&src.to_string_lossy(), "second", &dir).unwrap();
+        // THEN the new workspace's parent is trunk
+        assert_eq!(run(&dir, &["log", "-r", "@-", "--no-graph", "-T", "bookmarks"]).trim(), "main");
+    }
+
+    #[test]
     fn sync_when_trunk_moved_rebases_the_workspace_onto_it() {
         // GIVEN
         let (tmp, env) = env_with_repos(&[]);
