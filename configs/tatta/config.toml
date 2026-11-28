@@ -1,0 +1,6 @@
+[openbao]
+addr = "https://openbao.doghouse.lan"
+
+[credentials.sops-age]
+from = "file:~/.config/tatta/age.agekey"
+env = "SOPS_AGE_KEY_FILE"
