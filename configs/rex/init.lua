@@ -91,8 +91,9 @@ for key, m in pairs({ p = "pane", t = "tab", r = "resize", m = "move", s = "scro
 end
 
 -- alt+ keys work outside modes only; the command menu lists just modes (and go-to).
-rex.bind("alt+i", "client.tab.move", { direction = "backward" })
-rex.bind("alt+o", "client.tab.move", { direction = "forward" })
+-- alt+i / alt+o walk the visit history (any tab or session): back, then forward again.
+rex.bind("alt+i", "client.navigate.back")
+rex.bind("alt+o", "client.navigate.forward")
 rex.bind("alt+n", "pane.split", { direction = "auto" })
 rex.bind("alt+f", "pane.go_to")
 -- Bound directly (not queued): a queued pane.go_to never opens the switcher.
