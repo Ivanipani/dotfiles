@@ -2,5 +2,5 @@
 email = "iperdomo2016@gmail.com"
 
 [conveyor_belt]
-repos = ["Ivanipani/edifice"]
+repos = ["Ivanipani/edifice", "Ivanipani/edifice-deploy-configs"]
 context = "doghouse"

@@ -29,6 +29,13 @@ def test_personal_profile_lists_the_repos_the_belt_owns(repo, modules, tmp_path)
     assert "Ivanipani/edifice" in content.splitlines()
 
 
+def test_personal_profile_enrols_the_deploy_repo_in_the_belt(repo, modules, tmp_path):
+    # GIVEN the personal profile WHEN the repos file renders
+    content = _render(repo, modules, tmp_path, "conveyor-belt", "conveyor-belt/repos")
+    # THEN the deploy repo is on a line of its own
+    assert "Ivanipani/edifice-deploy-configs" in content.splitlines()
+
+
 def test_profile_without_repos_plans_nothing_for_conveyor_belt(repo, modules, tmp_path):
     # GIVEN the work profile, which enrols no repo WHEN the plan is built
     host = _host(repo, tmp_path, "work")
