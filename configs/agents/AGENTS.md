@@ -20,3 +20,9 @@ Granularity: delegate a whole unit of work, i.e. babysitting a process (deploy, 
 - Searching/reading code: `Explore` (haiku) or `model: "haiku"`.
 - Always set the model explicitly. Never use opus/fable for a subagent unless the task is design, root-causing a hard bug, or review.
 - Subagents start cold: give them the plan, paths, and success condition, and ask for a brief report.
+
+## conveyor-belt
+
+- Submit to conveyor-belt (`cb submit`) only when you need CI build, publish or pin actions run through the homelab cluster.
+- Otherwise do not submit: work and test locally (`reek ci run`) and push only your own bookmarks.
+- Do not submit just to finish a task or to "land" work the user has not asked to ship.
